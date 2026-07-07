@@ -62,9 +62,8 @@ Hemos configurado un orquestador en la raíz utilizando `package.json` para que 
   ```bash
   npm run dev
   ```
-  *(Si el Backend no utiliza un entorno virtual local en `.venv/`, puedes ejecutar `npm run dev:global`)*
 
-* **Iniciar solo el Backend (con entorno virtual)**:
+* **Iniciar solo el Backend (auto-detecta entorno virtual)**:
   ```bash
   npm run backend
   ```
@@ -74,7 +73,7 @@ Hemos configurado un orquestador en la raíz utilizando `package.json` para que 
   npm run mobile
   ```
 
-* **Iniciar la App de Escritorio**:
+* **Iniciar la App de Escritorio (auto-detecta entorno virtual)**:
   ```bash
   npm run desktop
   ```
