@@ -42,3 +42,40 @@ Para las guías detalladas de instalación, configuración y ejecución de cada 
 * [README de Backend](file:///c:/Program%20Files%20%28x86%29/Cimer%20Fotos%20App/Backend/README.md)
 * [README de Mobile](file:///c:/Program%20Files%20%28x86%29/Cimer%20Fotos%20App/Mobile/README.md)
 * [README de App Desktop](file:///c:/Program%20Files%20%28x86%29/Cimer%20Fotos%20App/appdesktop/README.md)
+
+---
+
+## Inicio Local Simultáneo (Monorepo)
+
+Hemos configurado un orquestador en la raíz utilizando `package.json` para que puedas arrancar el **Backend** y la aplicación **Mobile** al mismo tiempo con un único comando:
+
+### Pasos Iniciales
+1. Asegúrate de haber instalado las dependencias correspondientes dentro de `/Backend` (`pip install -r requirements.txt`) y de `/Mobile` (`npm install`).
+2. Instala las herramientas de desarrollo en la raíz del proyecto para habilitar la ejecución simultánea:
+   ```bash
+   npm install
+   ```
+
+### Comandos de Ejecución
+
+* **Iniciar Backend + Mobile simultáneamente (Recomendado)**:
+  ```bash
+  npm run dev
+  ```
+  *(Si el Backend no utiliza un entorno virtual local en `.venv/`, puedes ejecutar `npm run dev:global`)*
+
+* **Iniciar solo el Backend (con entorno virtual)**:
+  ```bash
+  npm run backend
+  ```
+
+* **Iniciar solo la App Móvil**:
+  ```bash
+  npm run mobile
+  ```
+
+* **Iniciar la App de Escritorio**:
+  ```bash
+  npm run desktop
+  ```
+

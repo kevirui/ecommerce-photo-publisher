@@ -1,0 +1,17 @@
+{
+  "name": "ecommerce-photo-publisher-root",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "backend": "cd Backend && .venv\\Scripts\\activate && uvicorn main:app --reload --port 8000",
+    "backend:global": "cd Backend && uvicorn main:app --reload --port 8000",
+    "mobile": "cd Mobile && npm start",
+    "desktop": "cd appdesktop && .venv\\Scripts\\activate && python main.py",
+    "desktop:global": "cd appdesktop && python main.py",
+    "dev": "npx concurrently --kill-others \"npm run backend\" \"npm run mobile\"",
+    "dev:global": "npx concurrently --kill-others \"npm run backend:global\" \"npm run mobile\""
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}
