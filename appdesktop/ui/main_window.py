@@ -58,6 +58,7 @@ from ui.sync_tab import SyncTab
 from ui.audit_tab import AuditTab
 from ui.photo_editor_tab import PhotoEditorTab
 from ui.photo_processor_tab import PhotoProcessorTab
+from ui.free_shipping_tab import FreeShippingTab
 from ui.styles import (
     COLOR_SUCCESS,
     COLOR_ERROR,
@@ -215,6 +216,10 @@ class MainWindow(QMainWindow):
         # --- TAB 5: Procesador IA ---
         self._photo_processor_tab = PhotoProcessorTab()
         self._tab_widget.addTab(self._photo_processor_tab, "🤖 Procesador IA")
+
+        # --- TAB 6: Envío Gratis ---
+        self._free_shipping_tab = FreeShippingTab(self._sql_service, self._ftp_service, parent=self)
+        self._tab_widget.addTab(self._free_shipping_tab, "🚚 Envío Gratis")
 
         main_layout.addWidget(self._tab_widget, 1)
 
@@ -544,6 +549,10 @@ class MainWindow(QMainWindow):
         # Actualizar conexiones en la pestaña de auditoría
         if hasattr(self, "_audit_tab") and self._audit_tab:
             self._audit_tab.update_connections(self._sql_service, self._ftp_service)
+
+        # Actualizar conexiones en la pestaña de envío gratis
+        if hasattr(self, "_free_shipping_tab") and self._free_shipping_tab:
+            self._free_shipping_tab.update_connections(self._sql_service, self._ftp_service)
 
         self._update_button_states()
 

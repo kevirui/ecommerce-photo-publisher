@@ -4,7 +4,8 @@ const path = require('path');
 
 const backendDir = path.join(__dirname, '..', 'Backend');
 let command = 'python';
-let args = ['-m', 'uvicorn', 'main:app', '--reload', '--port', '8000'];
+const defaultArgs = ['main:app', '--reload', '--host', '0.0.0.0', '--port', '8000'];
+let args = ['-m', 'uvicorn', ...defaultArgs];
 
 // Posibles rutas del ejecutable de uvicorn en el entorno virtual
 const venvUvicornWin = path.join(backendDir, '.venv', 'Scripts', 'uvicorn.exe');
@@ -14,16 +15,16 @@ const envUvicornUnix = path.join(backendDir, 'env', 'bin', 'uvicorn');
 
 if (fs.existsSync(venvUvicornWin)) {
   command = `"${venvUvicornWin}"`;
-  args = ['main:app', '--reload', '--port', '8000'];
+  args = defaultArgs;
 } else if (fs.existsSync(venvUvicornUnix)) {
   command = `"${venvUvicornUnix}"`;
-  args = ['main:app', '--reload', '--port', '8000'];
+  args = defaultArgs;
 } else if (fs.existsSync(envUvicornWin)) {
   command = `"${envUvicornWin}"`;
-  args = ['main:app', '--reload', '--port', '8000'];
+  args = defaultArgs;
 } else if (fs.existsSync(envUvicornUnix)) {
   command = `"${envUvicornUnix}"`;
-  args = ['main:app', '--reload', '--port', '8000'];
+  args = defaultArgs;
 }
 
 console.log(`[Backend Orchestrator] Ejecutando en: ${backendDir}`);

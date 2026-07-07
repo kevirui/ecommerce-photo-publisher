@@ -450,6 +450,43 @@ class FtpService:
             logger.error(f"Error al eliminar FTP '{remote_name}': {e}")
             return False
 
+    def download_file(self, remote_name: str, local_path: Path) -> bool:
+        """
+        Descarga un archivo remoto del servidor FTP con reintentos.
+
+        Args:
+            remote_name: Nombre del archivo en el servidor remoto.
+            local_path: Ruta local donde guardar el archivo.
+
+        Returns:
+            True si la descarga fue exitosa.
+
+        Raises:
+            FtpServiceError: Si falla la descarga después de todos los reintentos.
+        """
+        return self._retry(
+            self._download_file_single,
+            remote_name,
+            local_path,
+        )
+
+    def _download_file_single(self, remote_name: str, local_path: Path) -> bool:
+        """
+        Ejecuta una descarga FTP individual (sin reintentos).
+        """
+        self._ensure_connected()
+
+        start_time = time.time()
+        with open(local_path, "wb") as file_handle:
+            self._ftp.retrbinary(f"RETR {remote_name}", file_handle.write)
+
+        elapsed = time.time() - start_time
+        logger.info(
+            f"FTP Download OK: {remote_name} -> {local_path.name} "
+            f"({local_path.stat().st_size / 1024:.1f} KB, {elapsed:.2f}s)"
+        )
+        return True
+
     # ================================================================
     # Reintentos
     # ================================================================

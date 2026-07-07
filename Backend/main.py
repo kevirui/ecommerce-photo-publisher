@@ -1,8 +1,11 @@
 from fastapi import FastAPI, File, UploadFile, Form, HTTPException
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
 import os
 import tempfile
 import shutil
+import uuid
+import time
+import threading
 from pathlib import Path
 
 # from services.database import SqlService
@@ -52,6 +55,210 @@ else:
 # Directorio de respaldo local
 BACKUP_DIR = Path("Respaldo_Imagenes")
 
+# Directorio de previews temporales
+PREVIEWS_DIR = Path("Previews_Temp")
+PREVIEWS_DIR.mkdir(parents=True, exist_ok=True)
+
+# Almacén en memoria de previews activos: {preview_id: {path, article_code, created_at}}
+_preview_store: dict[str, dict] = {}
+_preview_lock = threading.Lock()
+
+PREVIEW_EXPIRY_SECONDS = 30 * 60  # 30 minutos
+
+
+def _cleanup_stale_previews():
+    """Elimina previews temporales que tengan más de 30 minutos."""
+    while True:
+        time.sleep(300)  # Revisar cada 5 minutos
+        now = time.time()
+        to_remove = []
+        with _preview_lock:
+            for pid, info in _preview_store.items():
+                if now - info["created_at"] > PREVIEW_EXPIRY_SECONDS:
+                    to_remove.append(pid)
+            for pid in to_remove:
+                info = _preview_store.pop(pid, None)
+                if info and Path(info["path"]).exists():
+                    try:
+                        os.remove(info["path"])
+                    except Exception:
+                        pass
+        if to_remove:
+            print(f"Limpieza: {len(to_remove)} preview(s) expirado(s) eliminados.")
+
+
+# Iniciar hilo de limpieza como daemon
+_cleanup_thread = threading.Thread(target=_cleanup_stale_previews, daemon=True)
+_cleanup_thread.start()
+
+# ==========================================
+# Endpoint: Preview (Paso 1 - Procesar con IA)
+# ==========================================
+@app.post("/api/v1/photos/preview")
+async def preview_photo(
+    file: UploadFile = File(...),
+    article_code: str = Form(...),
+    include_stamp: bool = Form(False),
+    watermark_opacity: float = Form(0.3)
+):
+    """Procesa la imagen con IA y devuelve un preview_id para visualizarla."""
+    # Validación en Base de Datos
+    from services.database import SqlService
+    sql = SqlService(SQL_SERVER, SQL_DB, SQL_USER, SQL_PASS)
+    try:
+        sql.connect()
+        results = sql.execute("SELECT * FROM ARTICULOS WHERE COD_ARTICULO = ?", (article_code,))
+        if not results:
+            return JSONResponse(status_code=404, content={"error": "Artículo no encontrado en la base de datos."})
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": f"Error de Base de Datos (Validación): {e}"})
+    finally:
+        sql.disconnect()
+
+    # Guardar archivo subido temporalmente y procesar
+    with tempfile.TemporaryDirectory() as tmpdir:
+        input_path = Path(tmpdir) / file.filename
+        with open(input_path, "wb") as buffer:
+            buffer.write(await file.read())
+
+        try:
+            processed_path = process_image(input_path, include_stamp=include_stamp, watermark_opacity=watermark_opacity)
+        except Exception as e:
+            return JSONResponse(status_code=500, content={"error": f"Error procesando imagen: {e}"})
+
+        # Copiar la imagen procesada a carpeta de previews con ID único
+        preview_id = str(uuid.uuid4())
+        preview_filename = f"{preview_id}.jpg"
+        preview_dest = PREVIEWS_DIR / preview_filename
+        shutil.copy2(processed_path, preview_dest)
+
+    # Registrar en el store
+    with _preview_lock:
+        _preview_store[preview_id] = {
+            "path": str(preview_dest),
+            "article_code": article_code,
+            "created_at": time.time(),
+        }
+
+    return {
+        "preview_id": preview_id,
+        "preview_url": f"/api/v1/photos/preview/{preview_id}",
+        "message": "Imagen procesada con IA. Revisa el preview antes de confirmar."
+    }
+
+
+# ==========================================
+# Endpoint: Servir imagen de preview
+# ==========================================
+@app.get("/api/v1/photos/preview/{preview_id}")
+async def get_preview_image(preview_id: str):
+    """Sirve la imagen procesada temporalmente para visualización."""
+    with _preview_lock:
+        info = _preview_store.get(preview_id)
+
+    if not info:
+        raise HTTPException(status_code=404, detail="Preview no encontrado o expirado.")
+
+    preview_path = Path(info["path"])
+    if not preview_path.exists():
+        with _preview_lock:
+            _preview_store.pop(preview_id, None)
+        raise HTTPException(status_code=404, detail="Archivo de preview no encontrado.")
+
+    return FileResponse(str(preview_path), media_type="image/jpeg")
+
+
+# ==========================================
+# Endpoint: Confirm (Paso 2 - Subir a FTP/BD)
+# ==========================================
+@app.post("/api/v1/photos/confirm")
+async def confirm_upload(
+    preview_id: str = Form(...),
+    article_code: str = Form(...),
+    image_index: int = Form(0),
+):
+    """Confirma la subida de un preview ya procesado: sube a FTP y actualiza BD."""
+    # Obtener info del preview
+    with _preview_lock:
+        info = _preview_store.get(preview_id)
+
+    if not info:
+        raise HTTPException(status_code=404, detail="Preview no encontrado o expirado. Vuelve a procesar la imagen.")
+
+    processed_path = Path(info["path"])
+    if not processed_path.exists():
+        with _preview_lock:
+            _preview_store.pop(preview_id, None)
+        raise HTTPException(status_code=404, detail="Archivo de preview no encontrado.")
+
+    file_name = f"{article_code}.jpg" if image_index == 0 else f"{article_code}_{image_index}.jpg"
+
+    # Guardar copia en Respaldo Local
+    BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+    backup_file_path = BACKUP_DIR / file_name
+    try:
+        shutil.copy2(processed_path, backup_file_path)
+    except Exception as e:
+        print(f"Advertencia: No se pudo crear el respaldo local: {e}")
+
+    # Subida al Servidor FTP
+    from services.ftp import FtpService
+    ftp = FtpService(FTP_HOST, port=21, username=FTP_USER, password=FTP_PASS, remote_path=FTP_PATH)
+    try:
+        ftp.connect()
+        ftp.upload_file(processed_path, file_name)
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": f"Error subiendo a FTP: {e}"})
+    finally:
+        ftp.disconnect()
+
+    # Actualización en la Base de Datos
+    from services.database import SqlService
+    sql = SqlService(SQL_SERVER, SQL_DB, SQL_USER, SQL_PASS)
+    try:
+        sql.connect()
+        if image_index == 0:
+            sql.call_procedure(
+                "eco_articulos_publi_web_actua",
+                {
+                    "cod_articulo": article_code,
+                    "web_publi": "S",
+                    "web_imagen": file_name,
+                }
+            )
+        else:
+            sql.call_procedure(
+                "eco_articulos_imagenes_actua",
+                {
+                    "cod_articulo": article_code,
+                    "web_imagen": file_name,
+                    "indice": f"_{image_index}",
+                }
+            )
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": f"Error ejecutando SP en BD: {e}"})
+    finally:
+        sql.disconnect()
+
+    # Limpiar el preview temporal
+    with _preview_lock:
+        _preview_store.pop(preview_id, None)
+    try:
+        os.remove(processed_path)
+    except Exception:
+        pass
+
+    return {
+        "message": "Imagen confirmada, subida por FTP y registrada en BD con éxito",
+        "article": article_code,
+        "image_index": image_index,
+        "backup_path": str(backup_file_path)
+    }
+
+
+# ==========================================
+# Endpoint Legacy: Upload directo (compatibilidad)
+# ==========================================
 @app.post("/api/v1/photos/upload")
 async def upload_photo(
     file: UploadFile = File(...),

@@ -7,6 +7,7 @@ export default function CameraScreen({ onPhotoTaken, onBack }) {
   const [isTaking, setIsTaking] = useState(false);
   const [cameraKey, setCameraKey] = useState(0);
   const [flash, setFlash] = useState('off');
+  const [isCameraActive, setIsCameraActive] = useState(true);
   const cameraRef = useRef(null);
 
   if (!permission) {
@@ -48,7 +49,11 @@ export default function CameraScreen({ onPhotoTaken, onBack }) {
   };
 
   const handleRestartCamera = () => {
-    setCameraKey(prev => prev + 1);
+    setIsCameraActive(false);
+    setTimeout(() => {
+      setCameraKey(prev => prev + 1);
+      setIsCameraActive(true);
+    }, 150);
   };
 
   const toggleFlash = () => {
@@ -67,38 +72,44 @@ export default function CameraScreen({ onPhotoTaken, onBack }) {
 
   return (
     <SafeAreaView style={styles.container}>
-      <CameraView key={cameraKey} style={styles.camera} facing="back" flash={flash} ref={cameraRef}>
-        <View style={styles.overlayContainer}>
-          {/* Barra Superior */}
-          <View style={styles.headerBar}>
-            <TouchableOpacity style={styles.headerButton} onPress={onBack} activeOpacity={0.7}>
-              <Text style={styles.headerButtonText}>✕ Volver</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.headerButton} onPress={toggleFlash} activeOpacity={0.7}>
-              <Text style={styles.headerButtonText}>{getFlashLabel()}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.headerButton} onPress={handleRestartCamera} activeOpacity={0.7}>
-              <Text style={styles.headerButtonText}>🔄 Reiniciar</Text>
-            </TouchableOpacity>
-          </View>
+      {isCameraActive ? (
+        <CameraView key={cameraKey} style={styles.camera} facing="back" flash={flash} ref={cameraRef}>
+          <View style={styles.overlayContainer}>
+            {/* Barra Superior */}
+            <View style={styles.headerBar}>
+              <TouchableOpacity style={styles.headerButton} onPress={onBack} activeOpacity={0.7}>
+                <Text style={styles.headerButtonText}>✕ Volver</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.headerButton} onPress={toggleFlash} activeOpacity={0.7}>
+                <Text style={styles.headerButtonText}>{getFlashLabel()}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.headerButton} onPress={handleRestartCamera} activeOpacity={0.7}>
+                <Text style={styles.headerButtonText}>🔄 Reiniciar</Text>
+              </TouchableOpacity>
+            </View>
 
-          {/* Botón de captura inferior */}
-          <View style={styles.buttonContainer}>
-            <TouchableOpacity 
-              style={styles.captureButton} 
-              onPress={takePicture}
-              disabled={isTaking}
-              activeOpacity={0.85}
-            >
-              {isTaking ? (
-                <ActivityIndicator size="large" color="#ffffff" />
-              ) : (
-                <View style={styles.captureInner} />
-              )}
-            </TouchableOpacity>
+            {/* Botón de captura inferior */}
+            <View style={styles.buttonContainer}>
+              <TouchableOpacity 
+                style={styles.captureButton} 
+                onPress={takePicture}
+                disabled={isTaking}
+                activeOpacity={0.85}
+              >
+                {isTaking ? (
+                  <ActivityIndicator size="large" color="#ffffff" />
+                ) : (
+                  <View style={styles.captureInner} />
+                )}
+              </TouchableOpacity>
+            </View>
           </View>
+        </CameraView>
+      ) : (
+        <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+          <ActivityIndicator size="large" color="#ffffff" />
         </View>
-      </CameraView>
+      )}
     </SafeAreaView>
   );
 }

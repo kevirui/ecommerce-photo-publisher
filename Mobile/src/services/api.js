@@ -62,6 +62,73 @@ export const uploadPhoto = async (photoUri, articleCode, includeStamp, imageInde
   }
 };
 
+export const previewPhoto = async (photoUri, articleCode, includeStamp, watermarkOpacity = 0.3) => {
+  try {
+    const formData = new FormData();
+
+    const filename = photoUri.split('/').pop() || 'photo.jpg';
+    const match = /\.(\w+)$/.exec(filename);
+    const type = match ? `image/${match[1]}` : `image`;
+
+    formData.append('file', {
+      uri: photoUri,
+      name: filename,
+      type,
+    });
+
+    formData.append('article_code', articleCode);
+    formData.append('include_stamp', includeStamp ? 'true' : 'false');
+    formData.append('watermark_opacity', watermarkOpacity.toString());
+
+    const response = await axios.post(`${BASE_URL}/photos/preview`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+      timeout: 60000, // 60 segundos (el procesamiento IA puede tardar)
+    });
+
+    // Construir URL absoluta del preview
+    const data = response.data;
+    data.preview_image_url = `${BASE_URL}/photos/preview/${data.preview_id}`;
+
+    return data;
+  } catch (error) {
+    if (error.response) {
+      throw new Error(error.response.data.error || 'Error en el servidor al procesar la imagen.');
+    } else if (error.request) {
+      throw new Error('No se pudo conectar al servidor. Verifica la IP y conexión.');
+    } else {
+      throw new Error('Error al preparar el procesamiento de la imagen.');
+    }
+  }
+};
+
+export const confirmUpload = async (previewId, articleCode, imageIndex = 0) => {
+  try {
+    const formData = new FormData();
+    formData.append('preview_id', previewId);
+    formData.append('article_code', articleCode);
+    formData.append('image_index', imageIndex.toString());
+
+    const response = await axios.post(`${BASE_URL}/photos/confirm`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+      timeout: 30000,
+    });
+
+    return response.data;
+  } catch (error) {
+    if (error.response) {
+      throw new Error(error.response.data.error || error.response.data.detail || 'Error al confirmar la subida.');
+    } else if (error.request) {
+      throw new Error('No se pudo conectar al servidor. Verifica la IP y conexión.');
+    } else {
+      throw new Error('Error al confirmar la subida de la imagen.');
+    }
+  }
+};
+
 export const getPendingProductsFromExcel = async (fileUri) => {
   try {
     const url = `${BASE_URL}/articles/pending/from-excel`;

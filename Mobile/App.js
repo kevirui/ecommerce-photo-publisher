@@ -1,5 +1,5 @@
 import { StatusBar } from 'expo-status-bar';
-import { StyleSheet, View } from 'react-native';
+import { StyleSheet, View, Platform, StatusBar as RNStatusBar } from 'react-native';
 import { useState } from 'react';
 import WelcomeScreen from './src/screens/WelcomeScreen';
 import CameraScreen from './src/screens/CameraScreen';
@@ -12,9 +12,11 @@ export default function App() {
   const [prefilledArticleCode, setPrefilledArticleCode] = useState('');
   const [lastUploadedCode, setLastUploadedCode] = useState('');
   const [pendingVisited, setPendingVisited] = useState(false);
+  const [nextImageIndex, setNextImageIndex] = useState(0);
 
   const handleStartCamera = () => {
     setPrefilledArticleCode('');
+    setNextImageIndex(0);
     setScreen('camera');
   };
 
@@ -28,15 +30,19 @@ export default function App() {
     setScreen('camera');
   };
 
-  const handleUploadSuccess = () => {
+  const handleUploadSuccess = (uploadedCode, keepTakingPhotos, nextIndex = 0) => {
     setPhotoUri(null);
-    if (prefilledArticleCode) {
-      setLastUploadedCode(prefilledArticleCode);
-      setScreen('pending');
+    if (keepTakingPhotos) {
+      setNextImageIndex(nextIndex);
+      setPrefilledArticleCode(uploadedCode);
+      setScreen('camera');
     } else {
-      setScreen('welcome');
+      setNextImageIndex(0);
+      setLastUploadedCode(uploadedCode || prefilledArticleCode);
+      setPendingVisited(true);
+      setScreen('pending');
+      setPrefilledArticleCode('');
     }
-    setPrefilledArticleCode('');
   };
 
   const handleGoBackToWelcome = () => {
@@ -46,6 +52,7 @@ export default function App() {
 
   const handleSelectProduct = (code) => {
     setPrefilledArticleCode(code);
+    setNextImageIndex(0);
     setScreen('camera');
   };
 
@@ -89,6 +96,7 @@ export default function App() {
           onRetake={handleRetake} 
           onUploadSuccess={handleUploadSuccess} 
           prefilledArticleCode={prefilledArticleCode}
+          nextImageIndex={nextImageIndex}
         />
       )}
     </View>
@@ -99,6 +107,7 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#13141a',
+    paddingTop: Platform.OS === 'android' ? RNStatusBar.currentHeight : 0,
   },
   fullScreen: {
     ...StyleSheet.absoluteFillObject,
