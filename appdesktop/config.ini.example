@@ -1,0 +1,19 @@
+[SQL]
+server = tu_servidor_ip,puerto\instancia
+database = nombre_base_datos
+username = tu_usuario
+password = tu_contraseña
+
+[FTP]
+host = tu_servidor_ftp.com
+port = 21
+username = tu_usuario_ftp
+password = tu_contraseña_ftp
+remote_path = /ruta/remota/para/imagenes/
+
+[General]
+image_folder = C:/ruta/local/a/imagenes
+max_threads = 4
+timeout = 30
+max_retries = 3
+convert_png = true

@@ -1,0 +1,19 @@
+# Python compilation files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+
+# Virtual Environments
+.venv/
+venv/
+ENV/
+env/
+
+# Local backup images (Ignore actual images, keep directory)
+Respaldo_Imagenes/*
+!Respaldo_Imagenes/.gitkeep
+
+# Local settings / secrets
+.env
