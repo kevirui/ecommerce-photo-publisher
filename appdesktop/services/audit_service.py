@@ -104,12 +104,17 @@ class AuditService:
             
             # Consultar los nombres de imágenes adicionales específicas registradas
             logger.info("Consultando detalles de imágenes adicionales de la base de datos...")
-            query_adicionales = "SELECT COD_ARTICULO, WEB_IMAGEN FROM ARTICULOS_IMAGENES"
+            query_adicionales = "SELECT COD_ARTICULO, IMAGEN FROM ARTICULOS_IMAGENES"
             adicionales_res = self._sql_service.execute(query_adicionales)
             
             for row in adicionales_res:
                 cod = str(row.get("COD_ARTICULO", "")).strip().upper()
-                img = str(row.get("WEB_IMAGEN", "")).strip().upper()
+                img_raw = str(row.get("IMAGEN", "")).strip()
+                # La columna IMAGEN almacena URLs completas; extraer solo el nombre del archivo
+                if "/" in img_raw:
+                    img = img_raw.rsplit("/", 1)[-1].upper()
+                else:
+                    img = img_raw.upper()
                 if cod and img:
                     if cod not in additional_images_by_code:
                         additional_images_by_code[cod] = []
