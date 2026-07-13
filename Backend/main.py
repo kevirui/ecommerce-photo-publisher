@@ -81,29 +81,111 @@ def add_to_no_stock_excel(code: str):
     import openpyxl
     from datetime import datetime
     code = code.strip().upper()
+
+    # Query DB to get the current stock
+    from services.database import SqlService
+    sql = SqlService(SQL_SERVER, SQL_DB, SQL_USER, SQL_PASS)
+    stock_val = 0.0
+    try:
+        sql.connect()
+        results = sql.execute("SELECT CANT_STOCK FROM ARTICULOS WHERE COD_ARTICULO = ?", (code,))
+        if results:
+            stock_val = float(results[0].get("CANT_STOCK", 0.0)) if results[0].get("CANT_STOCK") is not None else 0.0
+    except Exception as e:
+        print(f"Error fetching stock for no-stock entry {code}: {e}")
+    finally:
+        sql.disconnect()
     
     if NO_STOCK_EXCEL_PATH.exists():
         try:
             workbook = openpyxl.load_workbook(str(NO_STOCK_EXCEL_PATH))
             sheet = workbook.active
+            # Ensure headers are correct
+            headers = [cell.value for cell in sheet[1]]
+            if len(headers) < 3 or headers[2] != "Stock Fantasma":
+                sheet.cell(row=1, column=3, value="Stock Fantasma")
         except Exception:
             workbook = openpyxl.Workbook()
             sheet = workbook.active
-            sheet.append(["Código", "Fecha"])
+            sheet.append(["Código", "Fecha", "Stock Fantasma"])
     else:
         workbook = openpyxl.Workbook()
         sheet = workbook.active
-        sheet.append(["Código", "Fecha"])
+        sheet.append(["Código", "Fecha", "Stock Fantasma"])
         
     exists = False
-    for row in sheet.iter_rows(min_row=2, values_only=True):
-        if row and row[0] and str(row[0]).strip().upper() == code:
+    # Check if code already exists in column 1
+    for row_idx in range(2, sheet.max_row + 1):
+        cell_val = sheet.cell(row=row_idx, column=1).value
+        if cell_val and str(cell_val).strip().upper() == code:
             exists = True
+            # Update the stock value if it's missing
+            stock_cell = sheet.cell(row=row_idx, column=3)
+            if stock_cell.value is None or stock_cell.value == "":
+                stock_cell.value = stock_val
+                workbook.save(str(NO_STOCK_EXCEL_PATH))
             break
             
     if not exists:
-        sheet.append([code, datetime.now().strftime("%Y-%m-%d %H:%M:%S")])
+        sheet.append([code, datetime.now().strftime("%Y-%m-%d %H:%M:%S"), stock_val])
         workbook.save(str(NO_STOCK_EXCEL_PATH))
+
+def backfill_existing_stock_in_excel():
+    """Populates the Stock Fantasma column for all products already in the Excel."""
+    import openpyxl
+    if not NO_STOCK_EXCEL_PATH.exists():
+        return
+    try:
+        workbook = openpyxl.load_workbook(str(NO_STOCK_EXCEL_PATH))
+        sheet = workbook.active
+        if sheet is None:
+            return
+        
+        headers = [cell.value for cell in sheet[1]]
+        has_stock_col = False
+        stock_col_idx = 3
+        
+        for idx, header in enumerate(headers):
+            if header and str(header).strip().lower() in ("stock fantasma", "stock", "fantasma"):
+                has_stock_col = True
+                stock_col_idx = idx + 1
+                break
+        
+        if not has_stock_col:
+            sheet.cell(row=1, column=3, value="Stock Fantasma")
+            stock_col_idx = 3
+        
+        from services.database import SqlService
+        sql = SqlService(SQL_SERVER, SQL_DB, SQL_USER, SQL_PASS)
+        sql.connect()
+        
+        updated = False
+        for r_idx in range(2, sheet.max_row + 1):
+            code_cell = sheet.cell(row=r_idx, column=1)
+            stock_cell = sheet.cell(row=r_idx, column=stock_col_idx)
+            
+            if code_cell.value:
+                code = str(code_cell.value).strip().upper()
+                if stock_cell.value is None or stock_cell.value == "":
+                    try:
+                        results = sql.execute("SELECT CANT_STOCK FROM ARTICULOS WHERE COD_ARTICULO = ?", (code,))
+                        stock_val = 0.0
+                        if results:
+                            stock_val = float(results[0].get("CANT_STOCK", 0.0)) if results[0].get("CANT_STOCK") is not None else 0.0
+                        stock_cell.value = stock_val
+                        updated = True
+                    except Exception as e:
+                        print(f"Error querying stock for backfill code {code}: {e}")
+        
+        sql.disconnect()
+        if updated:
+            workbook.save(str(NO_STOCK_EXCEL_PATH))
+            print("Backfilled existing stock in excel successfully.")
+    except Exception as e:
+        print(f"Error during backfilling stock in excel: {e}")
+
+# Run backfill when backend is loaded/imported
+backfill_existing_stock_in_excel()
 
 # Almacén en memoria de previews activos: {preview_id: {path, article_code, created_at}}
 _preview_store: dict[str, dict] = {}
