@@ -13,26 +13,81 @@ export default function CropScreen({ photoUri, onCropDone, onCancel }) {
   const [processing, setProcessing] = useState(false);
   const [imageSize, setImageSize] = useState({ width: 0, height: 0 });
   const [containerLayout, setContainerLayout] = useState({ width: 0, height: 0 });
+  const [normalizedUri, setNormalizedUri] = useState(null);
 
   // Crop box state in pixels relative to the display container
   const [cropBox, setCropBox] = useState({ x: 50, y: 50, width: 200, height: 200 });
 
-  // Get image original dimensions
+  // Ref to hold current state to prevent stale closures in PanResponder
+  const stateRef = useRef({
+    cropBox: { x: 50, y: 50, width: 200, height: 200 },
+    imageSize: { width: 0, height: 0 },
+    containerLayout: { width: 0, height: 0 }
+  });
+
+  // Keep ref synchronized with states
+  useEffect(() => {
+    stateRef.current.cropBox = cropBox;
+  }, [cropBox]);
+
+  useEffect(() => {
+    stateRef.current.imageSize = imageSize;
+  }, [imageSize]);
+
+  useEffect(() => {
+    stateRef.current.containerLayout = containerLayout;
+  }, [containerLayout]);
+
+  // Get image original dimensions after normalizing orientation
   useEffect(() => {
     if (photoUri) {
       setLoading(true);
-      Image.getSize(
-        photoUri,
-        (width, height) => {
-          setImageSize({ width, height });
-          setLoading(false);
-        },
-        (error) => {
-          console.error("Error getting image size:", error);
-          alert("No se pudo cargar la imagen para recortar.");
-          onCancel();
+      
+      const prepareImage = async () => {
+        try {
+          // Normalize EXIF orientation by running a dummy manipulation.
+          // This rotates and bakes orientation physically into the pixel layout.
+          const normalized = await ImageManipulator.manipulateAsync(
+            photoUri,
+            [], 
+            { compress: 0.9, format: ImageManipulator.SaveFormat.JPEG }
+          );
+
+          Image.getSize(
+            normalized.uri,
+            (width, height) => {
+              setNormalizedUri(normalized.uri);
+              setImageSize({ width, height });
+              setLoading(false);
+            },
+            (error) => {
+              console.error("Error getting size of normalized image:", error);
+              fallbackToOriginal();
+            }
+          );
+        } catch (err) {
+          console.error("Error preparing image orientation normalization:", err);
+          fallbackToOriginal();
         }
-      );
+      };
+
+      const fallbackToOriginal = () => {
+        setNormalizedUri(photoUri);
+        Image.getSize(
+          photoUri,
+          (width, height) => {
+            setImageSize({ width, height });
+            setLoading(false);
+          },
+          (error) => {
+            console.error("Error getting original image size:", error);
+            alert("No se pudo cargar la imagen para recortar.");
+            onCancel();
+          }
+        );
+      };
+
+      prepareImage();
     }
   }, [photoUri]);
 
@@ -81,34 +136,63 @@ export default function CropScreen({ photoUri, onCropDone, onCancel }) {
     return { displayedWidth, displayedHeight, offsetLeft, offsetTop };
   };
 
+  // Helper using latest ref values for PanResponder calculation
+  const getDisplayedImageSizeFromRef = () => {
+    const { imageSize: refImageSize, containerLayout: refContainerLayout } = stateRef.current;
+    const containerWidth = refContainerLayout.width || SCREEN_WIDTH;
+    const containerHeight = refContainerLayout.height || (SCREEN_HEIGHT - 300);
+
+    if (refImageSize.width === 0 || refImageSize.height === 0) {
+      return { displayedWidth: containerWidth, displayedHeight: containerHeight, offsetLeft: 0, offsetTop: 0 };
+    }
+
+    const imageRatio = refImageSize.width / refImageSize.height;
+    const containerRatio = containerWidth / containerHeight;
+
+    let displayedWidth, displayedHeight;
+    if (containerRatio > imageRatio) {
+      displayedHeight = containerHeight;
+      displayedWidth = containerHeight * imageRatio;
+    } else {
+      displayedWidth = containerWidth;
+      displayedHeight = containerWidth / imageRatio;
+    }
+
+    const offsetLeft = (containerWidth - displayedWidth) / 2;
+    const offsetTop = (containerHeight - displayedHeight) / 2;
+
+    return { displayedWidth, displayedHeight, offsetLeft, offsetTop };
+  };
+
+  // PanResponder start values
+  const cropBoxStart = useRef({ x: 50, y: 50 });
+
   // PanResponder to make the crop box draggable
   const panResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
       onMoveShouldSetPanResponder: () => true,
+      onPanResponderGrant: () => {
+        cropBoxStart.current = { x: stateRef.current.cropBox.x, y: stateRef.current.cropBox.y };
+      },
       onPanResponderMove: (evt, gestureState) => {
-        setCropBox(prev => {
-          const { displayedWidth, displayedHeight, offsetLeft, offsetTop } = getDisplayedImageSize();
+        const { displayedWidth, displayedHeight, offsetLeft, offsetTop } = getDisplayedImageSizeFromRef();
+        const currentCropBox = stateRef.current.cropBox;
 
-          // Calculate new positions
-          let newX = prev.x + gestureState.dx;
-          let newY = prev.y + gestureState.dy;
+        // Calculate new positions based on total distance from gesture start
+        let newX = cropBoxStart.current.x + gestureState.dx;
+        let newY = cropBoxStart.current.y + gestureState.dy;
 
-          // Limit boundaries to the displayed image area
-          const minX = offsetLeft;
-          const maxX = offsetLeft + displayedWidth - prev.width;
-          const minY = offsetTop;
-          const maxY = offsetTop + displayedHeight - prev.height;
+        // Limit boundaries to the displayed image area
+        const minX = offsetLeft;
+        const maxX = offsetLeft + displayedWidth - currentCropBox.width;
+        const minY = offsetTop;
+        const maxY = offsetTop + displayedHeight - currentCropBox.height;
 
-          newX = Math.max(minX, Math.min(maxX, newX));
-          newY = Math.max(minY, Math.min(maxY, newY));
+        newX = Math.max(minX, Math.min(maxX, newX));
+        newY = Math.max(minY, Math.min(maxY, newY));
 
-          // Reset gesture delta to avoid acceleration
-          gestureState.dx = 0;
-          gestureState.dy = 0;
-
-          return { ...prev, x: newX, y: newY };
-        });
+        setCropBox(prev => ({ ...prev, x: newX, y: newY }));
       }
     })
   ).current;
@@ -139,7 +223,7 @@ export default function CropScreen({ photoUri, onCropDone, onCancel }) {
       const height = Math.min(imageSize.height - originY, Math.round(cropBox.height * scaleY));
 
       const manipResult = await ImageManipulator.manipulateAsync(
-        photoUri,
+        normalizedUri,
         [{ crop: { originX, originY, width, height } }],
         { compress: 0.9, format: ImageManipulator.SaveFormat.JPEG }
       );
@@ -201,7 +285,7 @@ export default function CropScreen({ photoUri, onCropDone, onCancel }) {
         onLayout={handleContainerLayout}
       >
         <Image 
-          source={{ uri: photoUri }} 
+          source={{ uri: normalizedUri }} 
           style={styles.image} 
           resizeMode="contain"
         />
