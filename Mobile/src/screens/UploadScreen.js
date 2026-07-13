@@ -8,7 +8,7 @@ import {
 import Slider from '@react-native-community/slider';
 import { previewPhoto, confirmUpload } from '../services/api';
 
-export default function UploadScreen({ photoUri, onRetake, onUploadSuccess, prefilledArticleCode, nextImageIndex }) {
+export default function UploadScreen({ photoUri, onRetake, onUploadSuccess, prefilledArticleCode, nextImageIndex, onTriggerCrop }) {
   const [articleCode, setArticleCode] = useState(prefilledArticleCode || '');
   const [includeStamp, setIncludeStamp] = useState(false);
   const [imageIndex, setImageIndex] = useState(nextImageIndex || 0);
@@ -239,6 +239,15 @@ export default function UploadScreen({ photoUri, onRetake, onUploadSuccess, pref
 
           <View style={styles.previewContainer}>
             <Image source={{ uri: photoUri }} style={styles.previewImage} resizeMode="contain" />
+            {onTriggerCrop && (
+              <TouchableOpacity 
+                style={styles.cropOverlayButton} 
+                onPress={onTriggerCrop}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.cropOverlayButtonText}>📐 Recortar / Encuadrar</Text>
+              </TouchableOpacity>
+            )}
           </View>
 
           <View style={styles.formContainer}>
@@ -604,5 +613,26 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontWeight: 'bold',
     fontSize: 16,
+  },
+  cropOverlayButton: {
+    position: 'absolute',
+    bottom: 16,
+    right: 16,
+    backgroundColor: '#4F8EF7',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+  },
+  cropOverlayButtonText: {
+    color: '#ffffff',
+    fontWeight: 'bold',
+    fontSize: 13,
   }
 });
