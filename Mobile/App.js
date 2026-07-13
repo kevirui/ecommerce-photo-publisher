@@ -1,10 +1,11 @@
 import { StatusBar } from 'expo-status-bar';
 import { StyleSheet, View, Platform, StatusBar as RNStatusBar } from 'react-native';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import WelcomeScreen from './src/screens/WelcomeScreen';
 import CameraScreen from './src/screens/CameraScreen';
 import UploadScreen from './src/screens/UploadScreen';
 import PendingScreen from './src/screens/PendingScreen';
+import { getDailyProductCodes, registerProductUploaded } from './src/services/photoCounter';
 
 export default function App() {
   const [screen, setScreen] = useState('welcome');
@@ -15,6 +16,15 @@ export default function App() {
   const [nextImageIndex, setNextImageIndex] = useState(0);
   const [photoQueue, setPhotoQueue] = useState([]);
   const [queueIndex, setQueueIndex] = useState(0);
+  const [todayCount, setTodayCount] = useState(0);
+
+  useEffect(() => {
+    const loadDailyCount = async () => {
+      const codes = await getDailyProductCodes();
+      setTodayCount(codes.length);
+    };
+    loadDailyCount();
+  }, []);
 
   const handleStartCamera = () => {
     setPrefilledArticleCode('');
@@ -48,6 +58,13 @@ export default function App() {
   };
 
   const handleUploadSuccess = (uploadedCode, keepTakingPhotos, nextIndex = 0) => {
+    const activeCode = uploadedCode || prefilledArticleCode;
+    if (activeCode) {
+      registerProductUploaded(activeCode).then(newCount => {
+        if (newCount > 0) setTodayCount(newCount);
+      });
+    }
+
     setPhotoUri(null);
     
     const nextQueueIndex = queueIndex + 1;
@@ -106,6 +123,7 @@ export default function App() {
         <WelcomeScreen 
           onStartCamera={handleStartCamera} 
           onViewPending={handleViewPending}
+          todayCount={todayCount}
         />
       )}
       {keepPendingAlive && (

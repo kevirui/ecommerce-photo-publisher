@@ -1,7 +1,7 @@
 import React from 'react';
 import { StyleSheet, Text, View, TouchableOpacity, SafeAreaView, StatusBar } from 'react-native';
 
-export default function WelcomeScreen({ onStartCamera, onViewPending }) {
+export default function WelcomeScreen({ onStartCamera, onViewPending, todayCount = 0 }) {
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" />
@@ -12,6 +12,14 @@ export default function WelcomeScreen({ onStartCamera, onViewPending }) {
           </View>
           <Text style={styles.title}>Cimer Fotos</Text>
           <Text style={styles.subtitle}>Captura y sube tus fotos de forma rápida y sencilla</Text>
+        </View>
+
+        <View style={styles.counterCard}>
+          <Text style={styles.counterTitle}>📈 Progreso Diario</Text>
+          <View style={styles.counterRow}>
+            <Text style={styles.counterLabel}>Productos fotografiados hoy:</Text>
+            <Text style={styles.counterValue}>{todayCount}</Text>
+          </View>
         </View>
 
         <View style={styles.infoCard}>
@@ -81,6 +89,38 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     lineHeight: 24,
   },
+  counterCard: {
+    backgroundColor: '#1e2030',
+    padding: 18,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#2e3047',
+    width: '100%',
+    marginVertical: 15,
+  },
+  counterTitle: {
+    color: '#4f46e5',
+    fontSize: 12,
+    fontWeight: 'bold',
+    marginBottom: 6,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+  },
+  counterRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  counterLabel: {
+    color: '#cbd5e1',
+    fontSize: 15,
+    fontWeight: '500',
+  },
+  counterValue: {
+    color: '#4f46e5',
+    fontSize: 26,
+    fontWeight: '800',
+  },
   infoCard: {
     backgroundColor: '#1e2030',
     padding: 20,
@@ -88,7 +128,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#2e3047',
     width: '100%',
-    marginVertical: 40,
+    marginVertical: 15,
   },
   infoText: {
     color: '#cbd5e1',
