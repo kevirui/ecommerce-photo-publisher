@@ -419,7 +419,7 @@ def get_pending_articles(pending_only: bool = True):
             is_publi = (web_publi == "S")
             has_any_image = (imagen_prov is not None and str(imagen_prov).strip() != "") or (cant_imagenes > 0)
             
-            if pending_only and is_publi and has_any_image:
+            if pending_only and has_any_image:
                 continue
                 
             if not is_publi:
@@ -448,6 +448,29 @@ def get_pending_articles(pending_only: bool = True):
         return {"articles": articles}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error en BD: {e}")
+    finally:
+        sql.disconnect()
+
+@app.post("/api/v1/articles/{code}/has-photo")
+def mark_article_has_photo(code: str):
+    """Marca un artículo como que ya tiene foto ejecutando el SP en BD con el nombre de imagen por defecto."""
+    from services.database import SqlService
+    sql = SqlService(SQL_SERVER, SQL_DB, SQL_USER, SQL_PASS)
+    try:
+        sql.connect()
+        # El nombre de la imagen principal por defecto es {code}.jpg
+        file_name = f"{code.strip().upper()}.jpg"
+        sql.call_procedure(
+            "eco_articulos_publi_web_actua",
+            {
+                "cod_articulo": code.strip().upper(),
+                "web_publi": "S",
+                "web_imagen": file_name,
+            }
+        )
+        return {"message": "Artículo marcado como 'ya tiene foto' con éxito", "article": code}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error ejecutando SP en BD: {e}")
     finally:
         sql.disconnect()
 

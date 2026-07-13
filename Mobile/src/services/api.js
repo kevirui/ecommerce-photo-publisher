@@ -158,3 +158,20 @@ export const getPendingProductsFromExcel = async (fileUri) => {
     throw new Error(error.message || 'Error al enviar el archivo Excel.');
   }
 };
+
+export const markProductHasPhoto = async (code) => {
+  try {
+    const response = await axios.post(`${BASE_URL}/articles/${code}/has-photo`, {}, {
+      timeout: 15000,
+    });
+    return response.data;
+  } catch (error) {
+    if (error.response) {
+      throw new Error(error.response.data.detail || 'Error en el servidor');
+    } else if (error.request) {
+      throw new Error('No se pudo conectar al servidor. Verifica la IP y conexión.');
+    } else {
+      throw new Error('Error al marcar que el artículo ya tiene foto.');
+    }
+  }
+};

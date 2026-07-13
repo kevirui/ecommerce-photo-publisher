@@ -4,7 +4,7 @@ import {
   TouchableOpacity, SafeAreaView, ActivityIndicator, StatusBar, ScrollView 
 } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
-import { getPendingProducts, getPendingProductsFromExcel } from '../services/api';
+import { getPendingProducts, getPendingProductsFromExcel, markProductHasPhoto } from '../services/api';
 
 export default function PendingScreen({ onBack, onSelectProduct, lastUploadedCode, onClearLastUploaded }) {
   const [products, setProducts] = useState([]);
@@ -132,6 +132,22 @@ export default function PendingScreen({ onBack, onSelectProduct, lastUploadedCod
     fetchProducts();
   };
 
+  const handleMarkHasPhoto = async (code) => {
+    try {
+      setIsLoading(true);
+      await markProductHasPhoto(code);
+      setProducts(prev => {
+        const updated = prev.filter(p => p.codigo !== code);
+        applyFilters(updated, searchQuery, selectedCategory);
+        return updated;
+      });
+    } catch (error) {
+      alert(error.message || 'Error al marcar el artículo.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const renderProductItem = ({ item }) => {
     return (
       <View style={styles.card}>
@@ -152,14 +168,23 @@ export default function PendingScreen({ onBack, onSelectProduct, lastUploadedCod
             </Text>
           </View>
         </View>
-        <TouchableOpacity 
-          style={styles.cameraButton} 
-          onPress={() => onSelectProduct(item.codigo)}
-          activeOpacity={0.8}
-        >
-          <Text style={styles.cameraButtonIcon}>📸</Text>
-          <Text style={styles.cameraButtonText}>Foto</Text>
-        </TouchableOpacity>
+        <View style={styles.actionsColumn}>
+          <TouchableOpacity 
+            style={styles.cameraButton} 
+            onPress={() => onSelectProduct(item.codigo)}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.cameraButtonIcon}>📸</Text>
+            <Text style={styles.cameraButtonText}>Foto</Text>
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={styles.hasPhotoButton} 
+            onPress={() => handleMarkHasPhoto(item.codigo)}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.hasPhotoButtonText}>✓ Ya tiene</Text>
+          </TouchableOpacity>
+        </View>
       </View>
     );
   };
@@ -525,6 +550,27 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 10,
     fontWeight: 'bold',
+  },
+  actionsColumn: {
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  hasPhotoButton: {
+    backgroundColor: '#10b981',
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: 60,
+  },
+  hasPhotoButtonText: {
+    color: '#ffffff',
+    fontSize: 9,
+    fontWeight: 'bold',
+    textAlign: 'center',
   },
   emptyContainer: {
     paddingVertical: 40,
