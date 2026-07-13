@@ -4,7 +4,7 @@ import {
   TouchableOpacity, SafeAreaView, ActivityIndicator, StatusBar, ScrollView 
 } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
-import { getPendingProducts, getPendingProductsFromExcel, markProductHasPhoto } from '../services/api';
+import { getPendingProducts, getPendingProductsFromExcel, markProductHasPhoto, markProductNoStock } from '../services/api';
 
 export default function PendingScreen({ onBack, onSelectProduct, lastUploadedCode, onClearLastUploaded }) {
   const [products, setProducts] = useState([]);
@@ -148,6 +148,22 @@ export default function PendingScreen({ onBack, onSelectProduct, lastUploadedCod
     }
   };
 
+  const handleMarkNoStock = async (code) => {
+    try {
+      setIsLoading(true);
+      await markProductNoStock(code);
+      setProducts(prev => {
+        const updated = prev.filter(p => p.codigo !== code);
+        applyFilters(updated, searchQuery, selectedCategory);
+        return updated;
+      });
+    } catch (error) {
+      alert(error.message || 'Error al marcar artículo sin stock.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const renderProductItem = ({ item }) => {
     return (
       <View style={styles.card}>
@@ -183,6 +199,13 @@ export default function PendingScreen({ onBack, onSelectProduct, lastUploadedCod
             activeOpacity={0.8}
           >
             <Text style={styles.hasPhotoButtonText}>✓ Ya tiene</Text>
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={styles.noStockButton} 
+            onPress={() => handleMarkNoStock(item.codigo)}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.noStockButtonText}>⚠️ Sin Stock</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -567,6 +590,21 @@ const styles = StyleSheet.create({
     width: 60,
   },
   hasPhotoButtonText: {
+    color: '#ffffff',
+    fontSize: 9,
+    fontWeight: 'bold',
+    textAlign: 'center',
+  },
+  noStockButton: {
+    backgroundColor: '#ef4444',
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: 60,
+  },
+  noStockButtonText: {
     color: '#ffffff',
     fontSize: 9,
     fontWeight: 'bold',

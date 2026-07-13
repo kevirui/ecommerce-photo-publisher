@@ -59,6 +59,52 @@ BACKUP_DIR = Path("Respaldo_Imagenes")
 PREVIEWS_DIR = Path("Previews_Temp")
 PREVIEWS_DIR.mkdir(parents=True, exist_ok=True)
 
+NO_STOCK_EXCEL_PATH = Path(__file__).parent / "productos_sin_stock.xlsx"
+
+def get_no_stock_codes() -> set:
+    import openpyxl
+    codes = set()
+    if not NO_STOCK_EXCEL_PATH.exists():
+        return codes
+    try:
+        workbook = openpyxl.load_workbook(str(NO_STOCK_EXCEL_PATH), read_only=True)
+        sheet = workbook.active
+        if sheet is not None:
+            for row in sheet.iter_rows(min_row=2, values_only=True):
+                if row and row[0]:
+                    codes.add(str(row[0]).strip().upper())
+    except Exception as e:
+        print(f"Error reading no-stock excel: {e}")
+    return codes
+
+def add_to_no_stock_excel(code: str):
+    import openpyxl
+    from datetime import datetime
+    code = code.strip().upper()
+    
+    if NO_STOCK_EXCEL_PATH.exists():
+        try:
+            workbook = openpyxl.load_workbook(str(NO_STOCK_EXCEL_PATH))
+            sheet = workbook.active
+        except Exception:
+            workbook = openpyxl.Workbook()
+            sheet = workbook.active
+            sheet.append(["Código", "Fecha"])
+    else:
+        workbook = openpyxl.Workbook()
+        sheet = workbook.active
+        sheet.append(["Código", "Fecha"])
+        
+    exists = False
+    for row in sheet.iter_rows(min_row=2, values_only=True):
+        if row and row[0] and str(row[0]).strip().upper() == code:
+            exists = True
+            break
+            
+    if not exists:
+        sheet.append([code, datetime.now().strftime("%Y-%m-%d %H:%M:%S")])
+        workbook.save(str(NO_STOCK_EXCEL_PATH))
+
 # Almacén en memoria de previews activos: {preview_id: {path, article_code, created_at}}
 _preview_store: dict[str, dict] = {}
 _preview_lock = threading.Lock()
@@ -405,10 +451,13 @@ def get_pending_articles(pending_only: bool = True):
             A.AGRUP_ECOM_1
         """
         
+        no_stock_set = get_no_stock_codes()
         results = sql.execute(query)
         articles = []
         for row in results:
             code = row.get("COD_ARTICULO", "")
+            if code and code.strip().upper() in no_stock_set:
+                continue
             descrip = row.get("DESCRIP_ARTI", "")
             web_publi = row.get("WEB_PUBLI", "")
             imagen_prov = row.get("WEB_IMAGEN_PROVE", "")
@@ -473,6 +522,15 @@ def mark_article_has_photo(code: str):
         raise HTTPException(status_code=500, detail=f"Error ejecutando SP en BD: {e}")
     finally:
         sql.disconnect()
+
+@app.post("/api/v1/articles/{code}/no-stock")
+def mark_article_no_stock(code: str):
+    """Marca un artículo como 'sin stock' (stock fantasma) agregándolo al excel local."""
+    try:
+        add_to_no_stock_excel(code)
+        return {"message": "Artículo agregado al reporte de stock fantasma", "article": code}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error al escribir en excel: {e}")
 
 @app.post("/api/v1/articles/pending/from-excel")
 async def get_pending_articles_from_excel(file: UploadFile = File(...)):
@@ -586,10 +644,13 @@ async def get_pending_articles_from_excel(file: UploadFile = File(...)):
                 A.CANT_STOCK,
                 A.AGRUP_ECOM_1
             """
+            no_stock_set = get_no_stock_codes()
             results = sql.execute(query, tuple(chunk))
             
             for row in results:
                 code = row.get("COD_ARTICULO", "")
+                if code and code.strip().upper() in no_stock_set:
+                    continue
                 descrip = row.get("DESCRIP_ARTI", "")
                 web_publi = row.get("WEB_PUBLI", "")
                 imagen_prov = row.get("WEB_IMAGEN_PROVE", "")
