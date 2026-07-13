@@ -1,8 +1,9 @@
 import React, { useState, useRef } from 'react';
 import { StyleSheet, Text, View, TouchableOpacity, SafeAreaView, ActivityIndicator } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
+import * as ImagePicker from 'expo-image-picker';
 
-export default function CameraScreen({ onPhotoTaken, onBack }) {
+export default function CameraScreen({ onPhotoTaken, onPhotosSelected, onBack }) {
   const [permission, requestPermission] = useCameraPermissions();
   const [isTaking, setIsTaking] = useState(false);
   const [cameraKey, setCameraKey] = useState(0);
@@ -45,6 +46,35 @@ export default function CameraScreen({ onPhotoTaken, onBack }) {
       } finally {
         setIsTaking(false);
       }
+    }
+  };
+
+  const pickImages = async () => {
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        alert('Se necesitan permisos de galería para elegir fotos.');
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsMultipleSelection: true,
+        quality: 0.8,
+        orderedSelection: true,
+      });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const uris = result.assets.map(asset => asset.uri);
+        if (onPhotosSelected) {
+          onPhotosSelected(uris);
+        } else {
+          onPhotoTaken(uris[0]);
+        }
+      }
+    } catch (error) {
+      console.error("Error al seleccionar fotos de la galería: ", error);
+      alert("Hubo un error al abrir la galería.");
     }
   };
 
@@ -91,6 +121,14 @@ export default function CameraScreen({ onPhotoTaken, onBack }) {
             {/* Botón de captura inferior */}
             <View style={styles.buttonContainer}>
               <TouchableOpacity 
+                style={styles.galleryButton} 
+                onPress={pickImages}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.galleryButtonText}>🖼️ Galería</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity 
                 style={styles.captureButton} 
                 onPress={takePicture}
                 disabled={isTaking}
@@ -102,6 +140,8 @@ export default function CameraScreen({ onPhotoTaken, onBack }) {
                   <View style={styles.captureInner} />
                 )}
               </TouchableOpacity>
+
+              <View style={styles.balancePlaceholder} />
             </View>
           </View>
         </CameraView>
@@ -148,9 +188,29 @@ const styles = StyleSheet.create({
   },
   buttonContainer: {
     flexDirection: 'row',
-    justifyContent: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 40,
     marginBottom: 40,
     alignItems: 'center',
+  },
+  galleryButton: {
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+    width: 95,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  galleryButtonText: {
+    color: '#ffffff',
+    fontWeight: 'bold',
+    fontSize: 12,
+  },
+  balancePlaceholder: {
+    width: 95,
   },
   captureButton: {
     width: 80,

@@ -13,35 +13,67 @@ export default function App() {
   const [lastUploadedCode, setLastUploadedCode] = useState('');
   const [pendingVisited, setPendingVisited] = useState(false);
   const [nextImageIndex, setNextImageIndex] = useState(0);
+  const [photoQueue, setPhotoQueue] = useState([]);
+  const [queueIndex, setQueueIndex] = useState(0);
 
   const handleStartCamera = () => {
     setPrefilledArticleCode('');
     setNextImageIndex(0);
+    setPhotoQueue([]);
+    setQueueIndex(0);
     setScreen('camera');
   };
 
   const handlePhotoTaken = (uri) => {
+    setPhotoQueue([uri]);
+    setQueueIndex(0);
     setPhotoUri(uri);
+    setScreen('upload');
+  };
+
+  const handlePhotosSelected = (uris) => {
+    setPhotoQueue(uris);
+    setQueueIndex(0);
+    setPhotoUri(uris[0]);
+    // The first one is imageIndex = 0 (Principal) or if prefilled index is different
+    setNextImageIndex(0);
     setScreen('upload');
   };
 
   const handleRetake = () => {
     setPhotoUri(null);
+    setPhotoQueue([]);
+    setQueueIndex(0);
     setScreen('camera');
   };
 
   const handleUploadSuccess = (uploadedCode, keepTakingPhotos, nextIndex = 0) => {
     setPhotoUri(null);
-    if (keepTakingPhotos) {
-      setNextImageIndex(nextIndex);
+    
+    const nextQueueIndex = queueIndex + 1;
+    if (keepTakingPhotos && nextQueueIndex < photoQueue.length) {
+      // Advance in the gallery queue
+      setQueueIndex(nextQueueIndex);
+      setPhotoUri(photoQueue[nextQueueIndex]);
+      setNextImageIndex(nextQueueIndex);
       setPrefilledArticleCode(uploadedCode);
-      setScreen('camera');
+      setScreen('upload');
     } else {
-      setNextImageIndex(0);
-      setLastUploadedCode(uploadedCode || prefilledArticleCode);
-      setPendingVisited(true);
-      setScreen('pending');
-      setPrefilledArticleCode('');
+      // Normal flow or queue finished
+      setPhotoQueue([]);
+      setQueueIndex(0);
+      
+      if (keepTakingPhotos) {
+        setNextImageIndex(nextIndex);
+        setPrefilledArticleCode(uploadedCode);
+        setScreen('camera');
+      } else {
+        setNextImageIndex(0);
+        setLastUploadedCode(uploadedCode || prefilledArticleCode);
+        setPendingVisited(true);
+        setScreen('pending');
+        setPrefilledArticleCode('');
+      }
     }
   };
 
@@ -53,6 +85,8 @@ export default function App() {
   const handleSelectProduct = (code) => {
     setPrefilledArticleCode(code);
     setNextImageIndex(0);
+    setPhotoQueue([]);
+    setQueueIndex(0);
     setScreen('camera');
   };
 
@@ -87,6 +121,7 @@ export default function App() {
       {screen === 'camera' && (
         <CameraScreen 
           onPhotoTaken={handlePhotoTaken} 
+          onPhotosSelected={handlePhotosSelected}
           onBack={prefilledArticleCode ? () => setScreen('pending') : handleGoBackToWelcome}
         />
       )}
