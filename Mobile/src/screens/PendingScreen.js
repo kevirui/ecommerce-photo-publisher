@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   StyleSheet, Text, View, FlatList, TextInput, 
-  TouchableOpacity, SafeAreaView, ActivityIndicator, StatusBar, ScrollView 
+  TouchableOpacity, SafeAreaView, ActivityIndicator, StatusBar, ScrollView, Platform 
 } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import { getPendingProducts, getPendingProductsFromExcel, markProductHasPhoto, markProductNoStock } from '../services/api';
@@ -340,6 +340,7 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#13141a',
+    paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0,
   },
   header: {
     flexDirection: 'row',
