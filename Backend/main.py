@@ -82,36 +82,41 @@ def add_to_no_stock_excel(code: str):
     from datetime import datetime
     code = code.strip().upper()
 
-    # Query DB to get the current stock
+    # Query DB to get the description and current stock
     from services.database import SqlService
     sql = SqlService(SQL_SERVER, SQL_DB, SQL_USER, SQL_PASS)
     stock_val = 0.0
+    description_val = ""
     try:
         sql.connect()
-        results = sql.execute("SELECT CANT_STOCK FROM ARTICULOS WHERE COD_ARTICULO = ?", (code,))
+        results = sql.execute("SELECT DESCRIP_ARTI, CANT_STOCK FROM ARTICULOS WHERE COD_ARTICULO = ?", (code,))
         if results:
             stock_val = float(results[0].get("CANT_STOCK", 0.0)) if results[0].get("CANT_STOCK") is not None else 0.0
+            description_val = str(results[0].get("DESCRIP_ARTI", "")).strip()
     except Exception as e:
-        print(f"Error fetching stock for no-stock entry {code}: {e}")
+        print(f"Error fetching product data for no-stock entry {code}: {e}")
     finally:
         sql.disconnect()
+    
+    headers = ["Código", "Descripción", "Fecha", "Stock Fantasma"]
     
     if NO_STOCK_EXCEL_PATH.exists():
         try:
             workbook = openpyxl.load_workbook(str(NO_STOCK_EXCEL_PATH))
             sheet = workbook.active
             # Ensure headers are correct
-            headers = [cell.value for cell in sheet[1]]
-            if len(headers) < 3 or headers[2] != "Stock Fantasma":
-                sheet.cell(row=1, column=3, value="Stock Fantasma")
+            sheet.cell(row=1, column=1, value="Código")
+            sheet.cell(row=1, column=2, value="Descripción")
+            sheet.cell(row=1, column=3, value="Fecha")
+            sheet.cell(row=1, column=4, value="Stock Fantasma")
         except Exception:
             workbook = openpyxl.Workbook()
             sheet = workbook.active
-            sheet.append(["Código", "Fecha", "Stock Fantasma"])
+            sheet.append(headers)
     else:
         workbook = openpyxl.Workbook()
         sheet = workbook.active
-        sheet.append(["Código", "Fecha", "Stock Fantasma"])
+        sheet.append(headers)
         
     exists = False
     # Check if code already exists in column 1
@@ -119,19 +124,19 @@ def add_to_no_stock_excel(code: str):
         cell_val = sheet.cell(row=row_idx, column=1).value
         if cell_val and str(cell_val).strip().upper() == code:
             exists = True
-            # Update the stock value if it's missing
-            stock_cell = sheet.cell(row=row_idx, column=3)
-            if stock_cell.value is None or stock_cell.value == "":
-                stock_cell.value = stock_val
-                workbook.save(str(NO_STOCK_EXCEL_PATH))
+            # Update description, date and stock value
+            sheet.cell(row=row_idx, column=2, value=description_val)
+            sheet.cell(row=row_idx, column=3, value=datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+            sheet.cell(row=row_idx, column=4, value=stock_val)
+            workbook.save(str(NO_STOCK_EXCEL_PATH))
             break
             
     if not exists:
-        sheet.append([code, datetime.now().strftime("%Y-%m-%d %H:%M:%S"), stock_val])
+        sheet.append([code, description_val, datetime.now().strftime("%Y-%m-%d %H:%M:%S"), stock_val])
         workbook.save(str(NO_STOCK_EXCEL_PATH))
 
 def backfill_existing_stock_in_excel():
-    """Populates the Stock Fantasma column for all products already in the Excel."""
+    """Populates the Description and Stock Fantasma columns for all products already in the Excel."""
     import openpyxl
     if not NO_STOCK_EXCEL_PATH.exists():
         return
@@ -141,46 +146,64 @@ def backfill_existing_stock_in_excel():
         if sheet is None:
             return
         
+        # Ensure we have all headers in place
         headers = [cell.value for cell in sheet[1]]
-        has_stock_col = False
-        stock_col_idx = 3
         
-        for idx, header in enumerate(headers):
-            if header and str(header).strip().lower() in ("stock fantasma", "stock", "fantasma"):
-                has_stock_col = True
-                stock_col_idx = idx + 1
+        # Detect if we need to insert 'Descripción' column
+        has_desc = False
+        desc_col_idx = 2
+        for idx, h in enumerate(headers):
+            if h and "descrip" in str(h).lower():
+                has_desc = True
+                desc_col_idx = idx + 1
                 break
-        
-        if not has_stock_col:
-            sheet.cell(row=1, column=3, value="Stock Fantasma")
-            stock_col_idx = 3
+                
+        # If 'Descripción' header is missing, we re-format the header row to:
+        # Código | Descripción | Fecha | Stock Fantasma
+        # And shift columns if needed, or simply force the structure
+        sheet.cell(row=1, column=1, value="Código")
+        sheet.cell(row=1, column=2, value="Descripción")
+        sheet.cell(row=1, column=3, value="Fecha")
+        sheet.cell(row=1, column=4, value="Stock Fantasma")
         
         from services.database import SqlService
         sql = SqlService(SQL_SERVER, SQL_DB, SQL_USER, SQL_PASS)
         sql.connect()
         
         updated = False
+        
+        # Iteramos cada fila. En la estructura original, la columna 2 era "Fecha" y la columna 3 era "Stock Fantasma".
+        # Vamos a leer los códigos de la columna 1, buscar descripción y stock en BD,
+        # y re-escribir de forma limpia la fila.
         for r_idx in range(2, sheet.max_row + 1):
             code_cell = sheet.cell(row=r_idx, column=1)
-            stock_cell = sheet.cell(row=r_idx, column=stock_col_idx)
-            
             if code_cell.value:
                 code = str(code_cell.value).strip().upper()
-                if stock_cell.value is None or stock_cell.value == "":
-                    try:
-                        results = sql.execute("SELECT CANT_STOCK FROM ARTICULOS WHERE COD_ARTICULO = ?", (code,))
-                        stock_val = 0.0
-                        if results:
-                            stock_val = float(results[0].get("CANT_STOCK", 0.0)) if results[0].get("CANT_STOCK") is not None else 0.0
-                        stock_cell.value = stock_val
+                try:
+                    results = sql.execute("SELECT DESCRIP_ARTI, CANT_STOCK FROM ARTICULOS WHERE COD_ARTICULO = ?", (code,))
+                    if results:
+                        desc_val = str(results[0].get("DESCRIP_ARTI", "")).strip()
+                        stock_val = float(results[0].get("CANT_STOCK", 0.0)) if results[0].get("CANT_STOCK") is not None else 0.0
+                        
+                        # Si la fecha estaba en la columna 2, la pasamos a la columna 3
+                        # Si no hay fecha, ponemos la actual
+                        old_date = sheet.cell(row=r_idx, column=2).value
+                        if old_date and ("-" in str(old_date) or "/" in str(old_date)):
+                            date_val = old_date
+                        else:
+                            date_val = sheet.cell(row=r_idx, column=3).value or ""
+                        
+                        sheet.cell(row=r_idx, column=2, value=desc_val)
+                        sheet.cell(row=r_idx, column=3, value=date_val)
+                        sheet.cell(row=r_idx, column=4, value=stock_val)
                         updated = True
-                    except Exception as e:
-                        print(f"Error querying stock for backfill code {code}: {e}")
+                except Exception as e:
+                    print(f"Error querying data for backfill code {code}: {e}")
         
         sql.disconnect()
         if updated:
             workbook.save(str(NO_STOCK_EXCEL_PATH))
-            print("Backfilled existing stock in excel successfully.")
+            print("Backfilled existing descriptions and stocks in excel successfully.")
     except Exception as e:
         print(f"Error during backfilling stock in excel: {e}")
 
@@ -227,7 +250,7 @@ async def preview_photo(
     file: UploadFile = File(...),
     article_code: str = Form(...),
     include_stamp: bool = Form(False),
-    watermark_opacity: float = Form(0.3)
+    watermark_opacity: float = Form(0.05)
 ):
     """Procesa la imagen con IA y devuelve un preview_id para visualizarla."""
     # Validación en Base de Datos
@@ -513,11 +536,16 @@ def get_pending_articles(pending_only: bool = True):
             A.WEB_PUBLI,
             A.WEB_IMAGEN_PROVE,
             A.CANT_STOCK,
-            A.AGRUP_ECOM_1,
+            G1.DESCRIP_AGRU AS rubro,
+            G2.DESCRIP_AGRU AS grupo,
+            G3.DESCRIP_AGRU AS subgrupo,
             COUNT(I.COD_ARTICULO) AS cant_imagenes
         FROM ARTICULOS A
         LEFT JOIN ARTICULOS_IMAGENES I
             ON A.COD_ARTICULO = I.COD_ARTICULO
+        LEFT JOIN AGRUPACIONES G1 ON A.AGRU_1 = G1.CODI_AGRU AND G1.NUM_AGRU = 1
+        LEFT JOIN AGRUPACIONES G2 ON A.AGRU_2 = G2.CODI_AGRU AND G2.NUM_AGRU = 2
+        LEFT JOIN AGRUPACIONES G3 ON A.AGRU_3 = G3.CODI_AGRU AND G3.NUM_AGRU = 3
         """
         
         if pending_only:
@@ -530,7 +558,9 @@ def get_pending_articles(pending_only: bool = True):
             A.WEB_PUBLI,
             A.WEB_IMAGEN_PROVE,
             A.CANT_STOCK,
-            A.AGRUP_ECOM_1
+            G1.DESCRIP_AGRU,
+            G2.DESCRIP_AGRU,
+            G3.DESCRIP_AGRU
         """
         
         no_stock_set = get_no_stock_codes()
@@ -545,7 +575,9 @@ def get_pending_articles(pending_only: bool = True):
             imagen_prov = row.get("WEB_IMAGEN_PROVE", "")
             cant_stock = float(row.get("CANT_STOCK", 0.0)) if row.get("CANT_STOCK") is not None else 0.0
             cant_imagenes = int(row.get("cant_imagenes", 0)) if row.get("cant_imagenes") is not None else 0
-            categoria = row.get("AGRUP_ECOM_1", "")
+            rubro = row.get("rubro", "")
+            grupo = row.get("grupo", "")
+            subgrupo = row.get("subgrupo", "")
             
             is_publi = (web_publi == "S")
             has_any_image = (imagen_prov is not None and str(imagen_prov).strip() != "") or (cant_imagenes > 0)
@@ -572,11 +604,71 @@ def get_pending_articles(pending_only: bool = True):
                 "estado": estado,
                 "stock": cant_stock,
                 "cant_imagenes": cant_imagenes,
-                "categoria": categoria.strip() if categoria else "OTROS",
+                "rubro": rubro.strip() if rubro else "OTROS",
+                "grupo": grupo.strip() if grupo else "OTROS",
+                "subgrupo": subgrupo.strip() if subgrupo else "OTROS",
                 "observaciones": observaciones
             })
             
         return {"articles": articles}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error en BD: {e}")
+    finally:
+        sql.disconnect()
+
+@app.get("/api/v1/articles/categories")
+def get_articles_categories(pending_only: bool = True):
+    from services.database import SqlService
+    sql = SqlService(SQL_SERVER, SQL_DB, SQL_USER, SQL_PASS)
+    try:
+        sql.connect()
+        # Query that fetches only distinct Rubro, Grupo, Subgrupo of pending items in stock
+        query = """
+        SELECT DISTINCT
+            G1.DESCRIP_AGRU AS rubro,
+            G2.DESCRIP_AGRU AS grupo,
+            G3.DESCRIP_AGRU AS subgrupo
+        FROM ARTICULOS A
+        LEFT JOIN ARTICULOS_IMAGENES I ON A.COD_ARTICULO = I.COD_ARTICULO
+        LEFT JOIN AGRUPACIONES G1 ON A.AGRU_1 = G1.CODI_AGRU AND G1.NUM_AGRU = 1
+        LEFT JOIN AGRUPACIONES G2 ON A.AGRU_2 = G2.CODI_AGRU AND G2.NUM_AGRU = 2
+        LEFT JOIN AGRUPACIONES G3 ON A.AGRU_3 = G3.CODI_AGRU AND G3.NUM_AGRU = 3
+        WHERE A.CANT_STOCK > 0
+        """
+        if pending_only:
+            query += " AND (A.WEB_PUBLI <> 'S' OR A.WEB_IMAGEN_PROVE IS NULL OR A.WEB_IMAGEN_PROVE = '') "
+            
+        no_stock_set = get_no_stock_codes()
+        results = sql.execute(query)
+        
+        # Build hierarchy tree: Rubro -> Grupo -> Subgrupo
+        hierarchy = {}
+        for row in results:
+            rubro = (row.get("rubro") or "").strip() or "OTROS"
+            grupo = (row.get("grupo") or "").strip() or "OTROS"
+            subgrupo = (row.get("subgrupo") or "").strip() or "OTROS"
+            
+            if rubro not in hierarchy:
+                hierarchy[rubro] = {}
+            if grupo not in hierarchy[rubro]:
+                hierarchy[rubro][grupo] = set()
+            hierarchy[rubro][grupo].add(subgrupo)
+            
+        # Format tree as lists of dicts
+        tree = []
+        for r_name, g_dict in sorted(hierarchy.items()):
+            grupos_list = []
+            for g_name, s_set in sorted(g_dict.items()):
+                grupos_list.append({
+                    "nombre": g_name,
+                    "subgrupos": sorted(list(s_set))
+                })
+            tree.append({
+                "nombre": r_name,
+                "grupos": grupos_list
+            })
+            
+        return {"categories": tree}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error en BD: {e}")
     finally:
@@ -712,11 +804,16 @@ async def get_pending_articles_from_excel(file: UploadFile = File(...)):
                 A.WEB_PUBLI,
                 A.WEB_IMAGEN_PROVE,
                 A.CANT_STOCK,
-                A.AGRUP_ECOM_1,
+                G1.DESCRIP_AGRU AS rubro,
+                G2.DESCRIP_AGRU AS grupo,
+                G3.DESCRIP_AGRU AS subgrupo,
                 COUNT(I.COD_ARTICULO) AS cant_imagenes
             FROM ARTICULOS A
             LEFT JOIN ARTICULOS_IMAGENES I
                 ON A.COD_ARTICULO = I.COD_ARTICULO
+            LEFT JOIN AGRUPACIONES G1 ON A.AGRU_1 = G1.CODI_AGRU AND G1.NUM_AGRU = 1
+            LEFT JOIN AGRUPACIONES G2 ON A.AGRU_2 = G2.CODI_AGRU AND G2.NUM_AGRU = 2
+            LEFT JOIN AGRUPACIONES G3 ON A.AGRU_3 = G3.CODI_AGRU AND G3.NUM_AGRU = 3
             WHERE A.COD_ARTICULO IN ({placeholders})
             GROUP BY
                 A.COD_ARTICULO,
@@ -724,7 +821,9 @@ async def get_pending_articles_from_excel(file: UploadFile = File(...)):
                 A.WEB_PUBLI,
                 A.WEB_IMAGEN_PROVE,
                 A.CANT_STOCK,
-                A.AGRUP_ECOM_1
+                G1.DESCRIP_AGRU,
+                G2.DESCRIP_AGRU,
+                G3.DESCRIP_AGRU
             """
             no_stock_set = get_no_stock_codes()
             results = sql.execute(query, tuple(chunk))
@@ -738,7 +837,9 @@ async def get_pending_articles_from_excel(file: UploadFile = File(...)):
                 imagen_prov = row.get("WEB_IMAGEN_PROVE", "")
                 cant_stock = float(row.get("CANT_STOCK", 0.0)) if row.get("CANT_STOCK") is not None else 0.0
                 cant_imagenes = int(row.get("cant_imagenes", 0)) if row.get("cant_imagenes") is not None else 0
-                categoria = row.get("AGRUP_ECOM_1", "")
+                rubro = row.get("rubro", "")
+                grupo = row.get("grupo", "")
+                subgrupo = row.get("subgrupo", "")
                 
                 is_publi = (web_publi == "S")
                 has_any_image = (imagen_prov is not None and str(imagen_prov).strip() != "") or (cant_imagenes > 0)
@@ -762,7 +863,9 @@ async def get_pending_articles_from_excel(file: UploadFile = File(...)):
                     "estado": estado,
                     "stock": cant_stock,
                     "cant_imagenes": cant_imagenes,
-                    "categoria": categoria.strip() if categoria else "OTROS",
+                    "rubro": rubro.strip() if rubro else "OTROS",
+                    "grupo": grupo.strip() if grupo else "OTROS",
+                    "subgrupo": subgrupo.strip() if subgrupo else "OTROS",
                     "observaciones": observaciones
                 })
                 

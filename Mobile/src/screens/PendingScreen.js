@@ -4,13 +4,19 @@ import {
   TouchableOpacity, SafeAreaView, ActivityIndicator, StatusBar, ScrollView, Platform 
 } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
-import { getPendingProducts, getPendingProductsFromExcel, markProductHasPhoto, markProductNoStock } from '../services/api';
+import { getPendingProducts, getPendingProductsFromExcel, markProductHasPhoto, markProductNoStock, getArticleCategories } from '../services/api';
 
 export default function PendingScreen({ onBack, onSelectProduct, lastUploadedCode, onClearLastUploaded }) {
   const [products, setProducts] = useState([]);
   const [filteredProducts, setFilteredProducts] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('TODOS');
+  
+  // Hierarchical categories states
+  const [categoriesTree, setCategoriesTree] = useState([]);
+  const [selectedRubro, setSelectedRubro] = useState('TODOS');
+  const [selectedGrupo, setSelectedGrupo] = useState('TODOS');
+  const [selectedSubgrupo, setSelectedSubgrupo] = useState('TODOS');
+  
   const [isLoading, setIsLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
 
@@ -25,7 +31,7 @@ export default function PendingScreen({ onBack, onSelectProduct, lastUploadedCod
     if (lastUploadedCode) {
       setProducts(prev => {
         const updated = prev.filter(p => p.codigo !== lastUploadedCode);
-        applyFilters(updated, searchQuery, selectedCategory);
+        applyCascadingFilters(updated, searchQuery, selectedRubro, selectedGrupo, selectedSubgrupo);
         return updated;
       });
       onClearLastUploaded();
@@ -36,10 +42,17 @@ export default function PendingScreen({ onBack, onSelectProduct, lastUploadedCod
     setIsLoading(true);
     setErrorMsg('');
     try {
-      const data = await getPendingProducts();
-      setProducts(data);
-      setFilteredProducts(data);
-      setSelectedCategory('TODOS');
+      const [productsData, categoriesData] = await Promise.all([
+        getPendingProducts(),
+        getArticleCategories()
+      ]);
+      setProducts(productsData);
+      setFilteredProducts(productsData);
+      setCategoriesTree(categoriesData);
+      
+      setSelectedRubro('TODOS');
+      setSelectedGrupo('TODOS');
+      setSelectedSubgrupo('TODOS');
       setSearchQuery('');
     } catch (error) {
       setErrorMsg(error.message || 'Error al cargar productos pendientes.');
@@ -48,20 +61,17 @@ export default function PendingScreen({ onBack, onSelectProduct, lastUploadedCod
     }
   };
 
-  const getCategories = () => {
-    const cats = new Set(products.map(p => (p.categoria || 'OTROS').trim()));
-    const filteredCats = Array.from(cats).filter(c => {
-      const upper = c.toUpperCase();
-      return upper !== 'TODOS' && upper !== '.TODOS' && upper !== '';
-    });
-    return ['TODOS', ...filteredCats.sort()];
-  };
-
-  const applyFilters = (rawProducts, queryText, cat) => {
+  const applyCascadingFilters = (rawProducts, queryText, rubro, grupo, subgrupo) => {
     let filtered = rawProducts;
     
-    if (cat && cat !== 'TODOS') {
-      filtered = filtered.filter(item => (item.categoria || 'OTROS') === cat);
+    if (rubro && rubro !== 'TODOS') {
+      filtered = filtered.filter(item => (item.rubro || 'OTROS') === rubro);
+    }
+    if (grupo && grupo !== 'TODOS') {
+      filtered = filtered.filter(item => (item.grupo || 'OTROS') === grupo);
+    }
+    if (subgrupo && subgrupo !== 'TODOS') {
+      filtered = filtered.filter(item => (item.subgrupo || 'OTROS') === subgrupo);
     }
     
     if (queryText.trim()) {
@@ -69,8 +79,10 @@ export default function PendingScreen({ onBack, onSelectProduct, lastUploadedCod
       filtered = filtered.filter(item => {
         const codeMatch = item.codigo && item.codigo.toUpperCase().includes(q);
         const descMatch = item.descripcion && item.descripcion.toUpperCase().includes(q);
-        const catMatch = item.categoria && item.categoria.toUpperCase().includes(q);
-        return codeMatch || descMatch || catMatch;
+        const rubroMatch = item.rubro && item.rubro.toUpperCase().includes(q);
+        const grupoMatch = item.grupo && item.grupo.toUpperCase().includes(q);
+        const subgrupoMatch = item.subgrupo && item.subgrupo.toUpperCase().includes(q);
+        return codeMatch || descMatch || rubroMatch || grupoMatch || subgrupoMatch;
       });
     }
     
@@ -79,12 +91,25 @@ export default function PendingScreen({ onBack, onSelectProduct, lastUploadedCod
 
   const handleSearch = (text) => {
     setSearchQuery(text);
-    applyFilters(products, text, selectedCategory);
+    applyCascadingFilters(products, text, selectedRubro, selectedGrupo, selectedSubgrupo);
   };
 
-  const handleSelectCategory = (cat) => {
-    setSelectedCategory(cat);
-    applyFilters(products, searchQuery, cat);
+  const handleSelectRubro = (rubro) => {
+    setSelectedRubro(rubro);
+    setSelectedGrupo('TODOS');
+    setSelectedSubgrupo('TODOS');
+    applyCascadingFilters(products, searchQuery, rubro, 'TODOS', 'TODOS');
+  };
+
+  const handleSelectGrupo = (grupo) => {
+    setSelectedGrupo(grupo);
+    setSelectedSubgrupo('TODOS');
+    applyCascadingFilters(products, searchQuery, selectedRubro, grupo, 'TODOS');
+  };
+
+  const handleSelectSubgrupo = (subgrupo) => {
+    setSelectedSubgrupo(subgrupo);
+    applyCascadingFilters(products, searchQuery, selectedRubro, selectedGrupo, subgrupo);
   };
 
   const handleLoadExcel = async () => {
@@ -110,7 +135,9 @@ export default function PendingScreen({ onBack, onSelectProduct, lastUploadedCod
         setProducts(data);
         setExcelFileName(file.name);
         setIsExcelActive(true);
-        setSelectedCategory('TODOS');
+        setSelectedRubro('TODOS');
+        setSelectedGrupo('TODOS');
+        setSelectedSubgrupo('TODOS');
         setSearchQuery('');
         setFilteredProducts(data);
       } catch (error) {
@@ -127,7 +154,9 @@ export default function PendingScreen({ onBack, onSelectProduct, lastUploadedCod
   const handleClearExcel = () => {
     setIsExcelActive(false);
     setExcelFileName('');
-    setSelectedCategory('TODOS');
+    setSelectedRubro('TODOS');
+    setSelectedGrupo('TODOS');
+    setSelectedSubgrupo('TODOS');
     setSearchQuery('');
     fetchProducts();
   };
@@ -138,7 +167,7 @@ export default function PendingScreen({ onBack, onSelectProduct, lastUploadedCod
       await markProductHasPhoto(code);
       setProducts(prev => {
         const updated = prev.filter(p => p.codigo !== code);
-        applyFilters(updated, searchQuery, selectedCategory);
+        applyCascadingFilters(updated, searchQuery, selectedRubro, selectedGrupo, selectedSubgrupo);
         return updated;
       });
     } catch (error) {
@@ -154,7 +183,7 @@ export default function PendingScreen({ onBack, onSelectProduct, lastUploadedCod
       await markProductNoStock(code);
       setProducts(prev => {
         const updated = prev.filter(p => p.codigo !== code);
-        applyFilters(updated, searchQuery, selectedCategory);
+        applyCascadingFilters(updated, searchQuery, selectedRubro, selectedGrupo, selectedSubgrupo);
         return updated;
       });
     } catch (error) {
@@ -178,7 +207,9 @@ export default function PendingScreen({ onBack, onSelectProduct, lastUploadedCod
             {item.descripcion || 'Sin descripción'}
           </Text>
           <View style={styles.cardFooter}>
-            <Text style={styles.productCategory}>🏷️ {item.categoria || 'OTROS'}</Text>
+            <Text style={styles.productCategory}>
+              🏷️ {item.rubro || 'OTROS'} > {item.grupo || 'OTROS'} > {item.subgrupo || 'OTROS'}
+            </Text>
             <Text style={styles.productObs} numberOfLines={1}>
               {item.observaciones}
             </Text>
@@ -212,7 +243,25 @@ export default function PendingScreen({ onBack, onSelectProduct, lastUploadedCod
     );
   };
 
-  const categories = getCategories();
+  // Build list of Rubros, Grupos, Subgrupos for rendering cascading filters
+  const rubrosList = ['TODOS', ...categoriesTree.map(r => r.nombre)];
+  
+  const getGruposList = () => {
+    if (selectedRubro === 'TODOS') return ['TODOS'];
+    const rData = categoriesTree.find(r => r.nombre === selectedRubro);
+    return ['TODOS', ...(rData ? rData.grupos.map(g => g.nombre) : [])];
+  };
+  
+  const getSubgruposList = () => {
+    if (selectedRubro === 'TODOS' || selectedGrupo === 'TODOS') return ['TODOS'];
+    const rData = categoriesTree.find(r => r.nombre === selectedRubro);
+    if (!rData) return ['TODOS'];
+    const gData = rData.grupos.find(g => g.nombre === selectedGrupo);
+    return ['TODOS', ...(gData ? gData.subgrupos : [])];
+  };
+
+  const gruposList = getGruposList();
+  const subgruposList = getSubgruposList();
 
   return (
     <SafeAreaView style={styles.container}>
@@ -265,32 +314,96 @@ export default function PendingScreen({ onBack, onSelectProduct, lastUploadedCod
         />
       </View>
 
-      {/* Categorías (Pills) */}
-      {!isLoading && !errorMsg && categories.length > 1 && (
+      {/* Categorías Cascading (Pills) */}
+      {!isLoading && !errorMsg && categoriesTree.length > 0 && (
         <View style={styles.categoriesContainer}>
-          <ScrollView 
-            horizontal 
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.categoriesScroll}
-          >
-            {categories.map(cat => (
-              <TouchableOpacity
-                key={cat}
-                style={[
-                  styles.categoryPill,
-                  selectedCategory === cat && styles.categoryPillActive
-                ]}
-                onPress={() => handleSelectCategory(cat)}
+          {/* Rubro Selector */}
+          <View style={styles.filterRow}>
+            <Text style={styles.filterLabel}>Rubro:</Text>
+            <ScrollView 
+              horizontal 
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.categoriesScroll}
+            >
+              {rubrosList.map(rub => (
+                <TouchableOpacity
+                  key={rub}
+                  style={[
+                    styles.categoryPill,
+                    selectedRubro === rub && styles.categoryPillActive
+                  ]}
+                  onPress={() => handleSelectRubro(rub)}
+                >
+                  <Text style={[
+                    styles.categoryPillText,
+                    selectedRubro === rub && styles.categoryPillTextActive
+                  ]}>
+                    {rub}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+
+          {/* Grupo Selector */}
+          {gruposList.length > 1 && (
+            <View style={styles.filterRow}>
+              <Text style={styles.filterLabel}>Grupo:</Text>
+              <ScrollView 
+                horizontal 
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.categoriesScroll}
               >
-                <Text style={[
-                  styles.categoryPillText,
-                  selectedCategory === cat && styles.categoryPillTextActive
-                ]}>
-                  {cat}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
+                {gruposList.map(grup => (
+                  <TouchableOpacity
+                    key={grup}
+                    style={[
+                      styles.categoryPill,
+                      selectedGrupo === grup && styles.categoryPillActive
+                    ]}
+                    onPress={() => handleSelectGrupo(grup)}
+                  >
+                    <Text style={[
+                      styles.categoryPillText,
+                      selectedGrupo === grup && styles.categoryPillTextActive
+                    ]}>
+                      {grup}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
+          )}
+
+          {/* Subgrupo Selector */}
+          {subgruposList.length > 1 && (
+            <View style={styles.filterRow}>
+              <Text style={styles.filterLabel}>Subgrupo:</Text>
+              <ScrollView 
+                horizontal 
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.categoriesScroll}
+              >
+                {subgruposList.map(subg => (
+                  <TouchableOpacity
+                    key={subg}
+                    style={[
+                      styles.categoryPill,
+                      selectedSubgrupo === subg && styles.categoryPillActive
+                    ]}
+                    onPress={() => handleSelectSubgrupo(subg)}
+                  >
+                    <Text style={[
+                      styles.categoryPillText,
+                      selectedSubgrupo === subg && styles.categoryPillTextActive
+                    ]}>
+                      {subg}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
+          )}
         </View>
       )}
 
@@ -319,7 +432,7 @@ export default function PendingScreen({ onBack, onSelectProduct, lastUploadedCod
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
               <Text style={styles.emptyText}>
-                {searchQuery || selectedCategory !== 'TODOS'
+                {searchQuery || selectedRubro !== 'TODOS' || selectedGrupo !== 'TODOS' || selectedSubgrupo !== 'TODOS'
                   ? 'No se encontraron artículos que coincidan con los filtros.' 
                   : 'No hay artículos pendientes de fotografiar en stock.'}
               </Text>
@@ -433,10 +546,23 @@ const styles = StyleSheet.create({
     fontSize: 15,
   },
   categoriesContainer: {
-    paddingVertical: 6,
+    paddingVertical: 4,
+    gap: 8,
+  },
+  filterRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 2,
+  },
+  filterLabel: {
+    color: '#ECEFF4',
+    fontSize: 13,
+    fontWeight: 'bold',
+    width: 80,
+    paddingLeft: 16,
   },
   categoriesScroll: {
-    paddingHorizontal: 16,
+    paddingRight: 16,
     gap: 8,
   },
   categoryPill: {

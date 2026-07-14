@@ -21,7 +21,24 @@ export const getPendingProducts = async () => {
   }
 };
 
-export const uploadPhoto = async (photoUri, articleCode, includeStamp, imageIndex = 0, watermarkOpacity = 0.3) => {
+export const getArticleCategories = async () => {
+  try {
+    const response = await axios.get(`${BASE_URL}/articles/categories`, {
+      timeout: 15000,
+    });
+    return response.data.categories;
+  } catch (error) {
+    if (error.response) {
+      throw new Error(error.response.data.detail || 'Error en el servidor');
+    } else if (error.request) {
+      throw new Error('No se pudo conectar al servidor. Verifica la IP y conexión.');
+    } else {
+      throw new Error('Error al obtener las categorías.');
+    }
+  }
+};
+
+export const uploadPhoto = async (photoUri, articleCode, includeStamp, imageIndex = 0, watermarkOpacity = 0.05) => {
   try {
     const formData = new FormData();
 
@@ -62,7 +79,7 @@ export const uploadPhoto = async (photoUri, articleCode, includeStamp, imageInde
   }
 };
 
-export const previewPhoto = async (photoUri, articleCode, includeStamp, watermarkOpacity = 0.3) => {
+export const previewPhoto = async (photoUri, articleCode, includeStamp, watermarkOpacity = 0.05) => {
   try {
     const formData = new FormData();
 

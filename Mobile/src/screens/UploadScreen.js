@@ -3,16 +3,15 @@ import {
   StyleSheet, Text, View, Image, TextInput, 
   TouchableOpacity, SafeAreaView, Switch, 
   KeyboardAvoidingView, Platform, ScrollView, ActivityIndicator,
-  Alert, Animated
+  Alert
 } from 'react-native';
-import Slider from '@react-native-community/slider';
 import { previewPhoto, confirmUpload } from '../services/api';
 
-export default function UploadScreen({ photoUri, onRetake, onUploadSuccess, prefilledArticleCode, nextImageIndex, onTriggerCrop }) {
+export default function UploadScreen({ photoUri, onRetake, onUploadSuccess, prefilledArticleCode, nextImageIndex, fromPendingList }) {
   const [articleCode, setArticleCode] = useState(prefilledArticleCode || '');
   const [includeStamp, setIncludeStamp] = useState(false);
   const [imageIndex, setImageIndex] = useState(nextImageIndex || 0);
-  const [watermarkOpacity, setWatermarkOpacity] = useState(0.3);
+  const watermarkOpacity = 0.05; // Fixed at 5%
   const [errorMsg, setErrorMsg] = useState('');
 
   // Estados del flujo de 2 pasos
@@ -239,15 +238,6 @@ export default function UploadScreen({ photoUri, onRetake, onUploadSuccess, pref
 
           <View style={styles.previewContainer}>
             <Image source={{ uri: photoUri }} style={styles.previewImage} resizeMode="contain" />
-            {onTriggerCrop && (
-              <TouchableOpacity 
-                style={styles.cropOverlayButton} 
-                onPress={onTriggerCrop}
-                activeOpacity={0.8}
-              >
-                <Text style={styles.cropOverlayButtonText}>📐 Recortar / Encuadrar</Text>
-              </TouchableOpacity>
-            )}
           </View>
 
           <View style={styles.formContainer}>
@@ -261,42 +251,31 @@ export default function UploadScreen({ photoUri, onRetake, onUploadSuccess, pref
               autoCapitalize="none"
             />
 
-            <Text style={styles.label}>Tipo de Imagen:</Text>
-            <View style={styles.typeContainer}>
-              {[0, 1, 2, 3].map((index) => (
-                <TouchableOpacity
-                  key={index}
-                  style={[
-                    styles.typeButton,
-                    imageIndex === index && styles.typeButtonSelected
-                  ]}
-                  onPress={() => setImageIndex(index)}
-                >
-                  <Text style={[
-                    styles.typeButtonText,
-                    imageIndex === index && styles.typeButtonTextSelected
-                  ]}>
-                    {index === 0 ? 'Principal' : `Adic ${index}`}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-
-            <View style={styles.sliderHeaderContainer}>
-              <Text style={[styles.label, { marginBottom: 0 }]}>Transparencia de Marca de Agua:</Text>
-              <Text style={styles.sliderValueText}>{`${Math.round(watermarkOpacity * 100)}%`}</Text>
-            </View>
-            <Slider
-              style={styles.slider}
-              minimumValue={0}
-              maximumValue={1}
-              step={0.01}
-              value={watermarkOpacity}
-              onValueChange={(val) => setWatermarkOpacity(parseFloat(val.toFixed(2)))}
-              minimumTrackTintColor="#4F8EF7"
-              maximumTrackTintColor="#3B4054"
-              thumbTintColor="#ffffff"
-            />
+            {/* Image type selector: hidden when coming from pending list */}
+            {!fromPendingList && (
+              <>
+                <Text style={styles.label}>Tipo de Imagen:</Text>
+                <View style={styles.typeContainer}>
+                  {[0, 1, 2, 3].map((index) => (
+                    <TouchableOpacity
+                      key={index}
+                      style={[
+                        styles.typeButton,
+                        imageIndex === index && styles.typeButtonSelected
+                      ]}
+                      onPress={() => setImageIndex(index)}
+                    >
+                      <Text style={[
+                        styles.typeButtonText,
+                        imageIndex === index && styles.typeButtonTextSelected
+                      ]}>
+                        {index === 0 ? 'Principal' : `Adic ${index}`}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </>
+            )}
 
             <View style={styles.switchContainer}>
               <Text style={styles.switchLabel}>Incluir Sello (Oferta/Destacado)</Text>
@@ -541,11 +520,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
   },
-  slider: {
-    width: '100%',
-    height: 40,
-    marginBottom: 20,
-  },
   typeButton: {
     flex: 1,
     backgroundColor: '#252836',
@@ -614,25 +588,4 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     fontSize: 16,
   },
-  cropOverlayButton: {
-    position: 'absolute',
-    bottom: 16,
-    right: 16,
-    backgroundColor: '#4F8EF7',
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
-    elevation: 4,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
-  },
-  cropOverlayButtonText: {
-    color: '#ffffff',
-    fontWeight: 'bold',
-    fontSize: 13,
-  }
 });

@@ -15,12 +15,14 @@ ASSETS_DIR = Path(__file__).parent.parent / "assets"
 WATERMARK_PATH = ASSETS_DIR / "watermark.png"
 STAMP_PATH = ASSETS_DIR / "stamp.png"
 
-def process_image(input_path: Path, include_stamp: bool, watermark_opacity: float = 0.3) -> Path:
+def process_image(input_path: Path, include_stamp: bool, watermark_opacity: float = 0.05) -> Path:
     """
     Procesa la imagen eliminando el fondo, aplicando recorte 1:1,
-    y sobreponiendo la marca de agua y el sello (opcional).
+    y sobreponiendo la marca de agua (siempre al 5%) y el sello (opcional).
     Retorna la ruta al archivo temporal procesado (.jpg).
     """
+    # Forzar opacidad de marca de agua al 5% siempre
+    watermark_opacity = 0.05
     # 1. Cargar imagen original
     with Image.open(input_path) as img:
         img = img.convert("RGBA")

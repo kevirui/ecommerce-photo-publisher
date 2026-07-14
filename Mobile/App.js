@@ -5,13 +5,13 @@ import WelcomeScreen from './src/screens/WelcomeScreen';
 import CameraScreen from './src/screens/CameraScreen';
 import UploadScreen from './src/screens/UploadScreen';
 import PendingScreen from './src/screens/PendingScreen';
-import CropScreen from './src/screens/CropScreen';
+
 import { getDailyProductCodes, registerProductUploaded } from './src/services/photoCounter';
 
 export default function App() {
   const [screen, setScreen] = useState('welcome');
   const [photoUri, setPhotoUri] = useState(null);
-  const [rawPhotoUri, setRawPhotoUri] = useState(null);
+  const [fromPendingList, setFromPendingList] = useState(false);
   const [prefilledArticleCode, setPrefilledArticleCode] = useState('');
   const [lastUploadedCode, setLastUploadedCode] = useState('');
   const [pendingVisited, setPendingVisited] = useState(false);
@@ -33,52 +33,30 @@ export default function App() {
     setNextImageIndex(0);
     setPhotoQueue([]);
     setQueueIndex(0);
+    setFromPendingList(false);
     setScreen('camera');
   };
 
   const handlePhotoTaken = (uri) => {
     setPhotoQueue([uri]);
     setQueueIndex(0);
-    setRawPhotoUri(uri);
     setPhotoUri(uri);
-    setScreen('crop');
+    setScreen('upload');
   };
 
   const handlePhotosSelected = (uris) => {
     setPhotoQueue(uris);
     setQueueIndex(0);
-    setRawPhotoUri(uris[0]);
     setPhotoUri(uris[0]);
     // The first one is imageIndex = 0 (Principal) or if prefilled index is different
     setNextImageIndex(0);
-    setScreen('crop');
-  };
-
-  const handleCropDone = (croppedUri) => {
-    setPhotoUri(croppedUri);
-    // Update current index in photoQueue with the cropped URI
-    setPhotoQueue(prev => {
-      const updated = [...prev];
-      if (updated[queueIndex] !== undefined) {
-        updated[queueIndex] = croppedUri;
-      }
-      return updated;
-    });
     setScreen('upload');
   };
 
-  const handleCropCancel = () => {
-    // Keep photoUri as original/rawPhotoUri and advance to upload
-    setScreen('upload');
-  };
 
-  const handleTriggerCrop = () => {
-    setScreen('crop');
-  };
 
   const handleRetake = () => {
     setPhotoUri(null);
-    setRawPhotoUri(null);
     setPhotoQueue([]);
     setQueueIndex(0);
     setScreen('camera');
@@ -99,11 +77,10 @@ export default function App() {
       // Advance in the gallery queue
       setQueueIndex(nextQueueIndex);
       const nextUri = photoQueue[nextQueueIndex];
-      setRawPhotoUri(nextUri);
       setPhotoUri(nextUri);
       setNextImageIndex(nextQueueIndex);
       setPrefilledArticleCode(uploadedCode);
-      setScreen('crop');
+      setScreen('upload');
     } else {
       // Normal flow or queue finished
       setPhotoQueue([]);
@@ -133,6 +110,7 @@ export default function App() {
     setNextImageIndex(0);
     setPhotoQueue([]);
     setQueueIndex(0);
+    setFromPendingList(true);
     setScreen('camera');
   };
 
@@ -172,13 +150,6 @@ export default function App() {
           onBack={prefilledArticleCode ? () => setScreen('pending') : handleGoBackToWelcome}
         />
       )}
-      {screen === 'crop' && rawPhotoUri && (
-        <CropScreen 
-          photoUri={rawPhotoUri} 
-          onCropDone={handleCropDone} 
-          onCancel={handleCropCancel} 
-        />
-      )}
       {screen === 'upload' && photoUri && (
         <UploadScreen 
           photoUri={photoUri} 
@@ -186,7 +157,7 @@ export default function App() {
           onUploadSuccess={handleUploadSuccess} 
           prefilledArticleCode={prefilledArticleCode}
           nextImageIndex={nextImageIndex}
-          onTriggerCrop={handleTriggerCrop}
+          fromPendingList={fromPendingList}
         />
       )}
     </View>
