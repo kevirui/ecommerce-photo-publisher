@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  StyleSheet, Text, View, FlatList, TextInput, 
-  TouchableOpacity, SafeAreaView, ActivityIndicator, StatusBar, ScrollView, Platform 
+import {
+  StyleSheet, Text, View, FlatList, TextInput,
+  TouchableOpacity, SafeAreaView, ActivityIndicator, StatusBar, ScrollView, Platform
 } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import { getPendingProducts, getPendingProductsFromExcel, markProductHasPhoto, markProductNoStock, getArticleCategories } from '../services/api';
@@ -10,13 +10,13 @@ export default function PendingScreen({ onBack, onSelectProduct, lastUploadedCod
   const [products, setProducts] = useState([]);
   const [filteredProducts, setFilteredProducts] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
-  
+
   // Hierarchical categories states
   const [categoriesTree, setCategoriesTree] = useState([]);
   const [selectedRubro, setSelectedRubro] = useState('TODOS');
   const [selectedGrupo, setSelectedGrupo] = useState('TODOS');
   const [selectedSubgrupo, setSelectedSubgrupo] = useState('TODOS');
-  
+
   const [isLoading, setIsLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
 
@@ -49,7 +49,7 @@ export default function PendingScreen({ onBack, onSelectProduct, lastUploadedCod
       setProducts(productsData);
       setFilteredProducts(productsData);
       setCategoriesTree(categoriesData);
-      
+
       setSelectedRubro('TODOS');
       setSelectedGrupo('TODOS');
       setSelectedSubgrupo('TODOS');
@@ -63,7 +63,7 @@ export default function PendingScreen({ onBack, onSelectProduct, lastUploadedCod
 
   const applyCascadingFilters = (rawProducts, queryText, rubro, grupo, subgrupo) => {
     let filtered = rawProducts;
-    
+
     if (rubro && rubro !== 'TODOS') {
       filtered = filtered.filter(item => (item.rubro || 'OTROS') === rubro);
     }
@@ -73,7 +73,7 @@ export default function PendingScreen({ onBack, onSelectProduct, lastUploadedCod
     if (subgrupo && subgrupo !== 'TODOS') {
       filtered = filtered.filter(item => (item.subgrupo || 'OTROS') === subgrupo);
     }
-    
+
     if (queryText.trim()) {
       const q = queryText.toUpperCase();
       filtered = filtered.filter(item => {
@@ -85,7 +85,7 @@ export default function PendingScreen({ onBack, onSelectProduct, lastUploadedCod
         return codeMatch || descMatch || rubroMatch || grupoMatch || subgrupoMatch;
       });
     }
-    
+
     setFilteredProducts(filtered);
   };
 
@@ -129,7 +129,7 @@ export default function PendingScreen({ onBack, onSelectProduct, lastUploadedCod
       const file = result.assets[0];
       setIsLoading(true);
       setErrorMsg('');
-      
+
       try {
         const data = await getPendingProductsFromExcel(file.uri);
         setProducts(data);
@@ -208,7 +208,7 @@ export default function PendingScreen({ onBack, onSelectProduct, lastUploadedCod
           </Text>
           <View style={styles.cardFooter}>
             <Text style={styles.productCategory}>
-              🏷️ {item.rubro || 'OTROS'} > {item.grupo || 'OTROS'} > {item.subgrupo || 'OTROS'}
+              🏷️ {item.rubro || 'OTROS'} | {item.grupo || 'OTROS'} | {item.subgrupo || 'OTROS'}
             </Text>
             <Text style={styles.productObs} numberOfLines={1}>
               {item.observaciones}
@@ -216,27 +216,26 @@ export default function PendingScreen({ onBack, onSelectProduct, lastUploadedCod
           </View>
         </View>
         <View style={styles.actionsColumn}>
-          <TouchableOpacity 
-            style={styles.cameraButton} 
+          <TouchableOpacity
+            style={styles.cameraButton}
             onPress={() => onSelectProduct(item.codigo)}
             activeOpacity={0.8}
           >
-            <Text style={styles.cameraButtonIcon}>📸</Text>
             <Text style={styles.cameraButtonText}>Foto</Text>
           </TouchableOpacity>
-          <TouchableOpacity 
-            style={styles.hasPhotoButton} 
+          <TouchableOpacity
+            style={styles.hasPhotoButton}
             onPress={() => handleMarkHasPhoto(item.codigo)}
             activeOpacity={0.8}
           >
-            <Text style={styles.hasPhotoButtonText}>✓ Ya tiene</Text>
+            <Text style={styles.hasPhotoButtonText}>Ya tiene</Text>
           </TouchableOpacity>
-          <TouchableOpacity 
-            style={styles.noStockButton} 
+          <TouchableOpacity
+            style={styles.noStockButton}
             onPress={() => handleMarkNoStock(item.codigo)}
             activeOpacity={0.8}
           >
-            <Text style={styles.noStockButtonText}>⚠️ Sin Stock</Text>
+            <Text style={styles.noStockButtonText}>Sin Stock</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -245,13 +244,13 @@ export default function PendingScreen({ onBack, onSelectProduct, lastUploadedCod
 
   // Build list of Rubros, Grupos, Subgrupos for rendering cascading filters
   const rubrosList = ['TODOS', ...categoriesTree.map(r => r.nombre)];
-  
+
   const getGruposList = () => {
     if (selectedRubro === 'TODOS') return ['TODOS'];
     const rData = categoriesTree.find(r => r.nombre === selectedRubro);
     return ['TODOS', ...(rData ? rData.grupos.map(g => g.nombre) : [])];
   };
-  
+
   const getSubgruposList = () => {
     if (selectedRubro === 'TODOS' || selectedGrupo === 'TODOS') return ['TODOS'];
     const rData = categoriesTree.find(r => r.nombre === selectedRubro);
@@ -266,16 +265,16 @@ export default function PendingScreen({ onBack, onSelectProduct, lastUploadedCod
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" />
-      
+
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={onBack} style={styles.backButton}>
           <Text style={styles.backButtonText}>✕ Volver</Text>
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Pendientes de Foto</Text>
-        <TouchableOpacity 
-          onPress={isExcelActive ? handleClearExcel : fetchProducts} 
-          style={styles.refreshButton} 
+        <TouchableOpacity
+          onPress={isExcelActive ? handleClearExcel : fetchProducts}
+          style={styles.refreshButton}
           disabled={isLoading}
         >
           <Text style={styles.refreshButtonText}>🔄</Text>
@@ -320,8 +319,8 @@ export default function PendingScreen({ onBack, onSelectProduct, lastUploadedCod
           {/* Rubro Selector */}
           <View style={styles.filterRow}>
             <Text style={styles.filterLabel}>Rubro:</Text>
-            <ScrollView 
-              horizontal 
+            <ScrollView
+              horizontal
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.categoriesScroll}
             >
@@ -349,8 +348,8 @@ export default function PendingScreen({ onBack, onSelectProduct, lastUploadedCod
           {gruposList.length > 1 && (
             <View style={styles.filterRow}>
               <Text style={styles.filterLabel}>Grupo:</Text>
-              <ScrollView 
-                horizontal 
+              <ScrollView
+                horizontal
                 showsHorizontalScrollIndicator={false}
                 contentContainerStyle={styles.categoriesScroll}
               >
@@ -379,8 +378,8 @@ export default function PendingScreen({ onBack, onSelectProduct, lastUploadedCod
           {subgruposList.length > 1 && (
             <View style={styles.filterRow}>
               <Text style={styles.filterLabel}>Subgrupo:</Text>
-              <ScrollView 
-                horizontal 
+              <ScrollView
+                horizontal
                 showsHorizontalScrollIndicator={false}
                 contentContainerStyle={styles.categoriesScroll}
               >
@@ -433,7 +432,7 @@ export default function PendingScreen({ onBack, onSelectProduct, lastUploadedCod
             <View style={styles.emptyContainer}>
               <Text style={styles.emptyText}>
                 {searchQuery || selectedRubro !== 'TODOS' || selectedGrupo !== 'TODOS' || selectedSubgrupo !== 'TODOS'
-                  ? 'No se encontraron artículos que coincidan con los filtros.' 
+                  ? 'No se encontraron artículos que coincidan con los filtros.'
                   : 'No hay artículos pendientes de fotografiar en stock.'}
               </Text>
             </View>
@@ -691,10 +690,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     width: 60,
     height: 60,
-  },
-  cameraButtonIcon: {
-    fontSize: 20,
-    marginBottom: 2,
   },
   cameraButtonText: {
     color: '#ffffff',
