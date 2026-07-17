@@ -15,7 +15,7 @@ ASSETS_DIR = Path(__file__).parent.parent / "assets"
 WATERMARK_PATH = ASSETS_DIR / "watermark.png"
 STAMP_PATH = ASSETS_DIR / "stamp.png"
 
-def process_image(input_path: Path, include_stamp: bool, watermark_opacity: float = 0.05) -> Path:
+def process_image(input_path: Path, include_stamp: bool, watermark_opacity: float = 0.05, include_watermark: bool = True) -> Path:
     """
     Procesa la imagen eliminando el fondo, aplicando recorte 1:1,
     y sobreponiendo la marca de agua (siempre al 5%) y el sello (opcional).
@@ -53,7 +53,7 @@ def process_image(input_path: Path, include_stamp: bool, watermark_opacity: floa
         square_img = square_img.resize(target_size, Image.Resampling.LANCZOS)
         
         # 4. Superponer Marca de Agua (Siempre)
-        if WATERMARK_PATH.exists():
+        if include_watermark and WATERMARK_PATH.exists():
             with Image.open(WATERMARK_PATH) as wm:
                 wm = wm.convert("RGBA")
                 # Escalar la marca de agua al tamaño completo si es necesario

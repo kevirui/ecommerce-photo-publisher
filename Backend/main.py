@@ -229,11 +229,17 @@ def _cleanup_stale_previews():
                     to_remove.append(pid)
             for pid in to_remove:
                 info = _preview_store.pop(pid, None)
-                if info and Path(info["path"]).exists():
-                    try:
-                        os.remove(info["path"])
-                    except Exception:
-                        pass
+                if info:
+                    if Path(info["path"]).exists():
+                        try:
+                            os.remove(info["path"])
+                        except Exception:
+                            pass
+                    if "backup_path" in info and Path(info["backup_path"]).exists():
+                        try:
+                            os.remove(info["backup_path"])
+                        except Exception:
+                            pass
         if to_remove:
             print(f"Limpieza: {len(to_remove)} preview(s) expirado(s) eliminados.")
 
@@ -274,6 +280,7 @@ async def preview_photo(
 
         try:
             processed_path = process_image(input_path, include_stamp=include_stamp, watermark_opacity=watermark_opacity)
+            backup_temp_path = process_image(input_path, include_stamp=False, watermark_opacity=0.0, include_watermark=False)
         except Exception as e:
             return JSONResponse(status_code=500, content={"error": f"Error procesando imagen: {e}"})
 
@@ -283,10 +290,22 @@ async def preview_photo(
         preview_dest = PREVIEWS_DIR / preview_filename
         shutil.copy2(processed_path, preview_dest)
 
+        # Copiar la versión limpia para el respaldo local a la carpeta de previews
+        backup_filename = f"{preview_id}_backup.jpg"
+        backup_dest = PREVIEWS_DIR / backup_filename
+        shutil.copy2(backup_temp_path, backup_dest)
+
+        try:
+            os.remove(processed_path)
+            os.remove(backup_temp_path)
+        except Exception:
+            pass
+
     # Registrar en el store
     with _preview_lock:
         _preview_store[preview_id] = {
             "path": str(preview_dest),
+            "backup_path": str(backup_dest),
             "article_code": article_code,
             "created_at": time.time(),
         }
@@ -337,6 +356,7 @@ async def confirm_upload(
         raise HTTPException(status_code=404, detail="Preview no encontrado o expirado. Vuelve a procesar la imagen.")
 
     processed_path = Path(info["path"])
+    backup_temp_path = Path(info.get("backup_path", info["path"]))
     if not processed_path.exists():
         with _preview_lock:
             _preview_store.pop(preview_id, None)
@@ -344,11 +364,11 @@ async def confirm_upload(
 
     file_name = f"{article_code}.jpg" if image_index == 0 else f"{article_code}_{image_index}.jpg"
 
-    # Guardar copia en Respaldo Local
+    # Guardar copia en Respaldo Local (versión sin marca de agua)
     BACKUP_DIR.mkdir(parents=True, exist_ok=True)
     backup_file_path = BACKUP_DIR / file_name
     try:
-        shutil.copy2(processed_path, backup_file_path)
+        shutil.copy2(backup_temp_path, backup_file_path)
     except Exception as e:
         print(f"Advertencia: No se pudo crear el respaldo local: {e}")
 
@@ -396,6 +416,11 @@ async def confirm_upload(
         _preview_store.pop(preview_id, None)
     try:
         os.remove(processed_path)
+    except Exception:
+        pass
+    try:
+        if backup_temp_path != processed_path and backup_temp_path.exists():
+            os.remove(backup_temp_path)
     except Exception:
         pass
 
@@ -449,18 +474,19 @@ async def upload_photo(
         try:
             # Procesar imagen (Quitar fondo, ajustar, poner marca de agua y sello)
             processed_path = process_image(input_path, include_stamp=include_stamp, watermark_opacity=watermark_opacity)
+            backup_temp_path = process_image(input_path, include_stamp=False, watermark_opacity=0.0, include_watermark=False)
         except Exception as e:
              sql.disconnect()
              return JSONResponse(status_code=500, content={"error": f"Error procesando imagen: {e}"})
 
         # ==========================================
-        # 3. Guardar copia en Respaldo Local
+        # 3. Guardar copia en Respaldo Local (versión sin marca de agua)
         # ==========================================
         BACKUP_DIR.mkdir(parents=True, exist_ok=True)
         backup_file_path = BACKUP_DIR / file_name
         
         try:
-            shutil.copy2(processed_path, backup_file_path)
+            shutil.copy2(backup_temp_path, backup_file_path)
         except Exception as e:
             # No interrumpir el proceso si falla el respaldo, solo hacer log
             print(f"Advertencia: No se pudo crear el respaldo local: {e}")
@@ -475,6 +501,11 @@ async def upload_photo(
             ftp.upload_file(processed_path, file_name)
         except Exception as e:
             sql.disconnect()
+            try:
+                os.remove(processed_path)
+                os.remove(backup_temp_path)
+            except Exception:
+                pass
             return JSONResponse(status_code=500, content={"error": f"Error subiendo a FTP: {e}"})
         finally:
             ftp.disconnect()
@@ -502,9 +533,21 @@ async def upload_photo(
                     }
                 )
         except Exception as e:
+            try:
+                os.remove(processed_path)
+                os.remove(backup_temp_path)
+            except Exception:
+                pass
             return JSONResponse(status_code=500, content={"error": f"Error ejecutando SP en BD: {e}"})
         finally:
             sql.disconnect()
+
+        # Cleanup
+        try:
+            os.remove(processed_path)
+            os.remove(backup_temp_path)
+        except Exception:
+            pass
 
     return {
         "message": "Imagen procesada, subida por FTP y registrada en BD con éxito", 

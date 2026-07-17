@@ -57,6 +57,7 @@ from ui.settings_dialog import SettingsDialog
 from ui.sync_tab import SyncTab
 from ui.audit_tab import AuditTab
 from ui.photo_editor_tab import PhotoEditorTab
+from ui.photo_renamer_tab import PhotoRenamerTab
 from ui.photo_processor_tab import PhotoProcessorTab
 from ui.free_shipping_tab import FreeShippingTab
 from ui.styles import (
@@ -213,11 +214,15 @@ class MainWindow(QMainWindow):
         self._photo_editor_tab = PhotoEditorTab()
         self._tab_widget.addTab(self._photo_editor_tab, "📸 Editor de Fotos")
 
-        # --- TAB 5: Procesador IA ---
+        # --- TAB 5: Renombrador de Fotos ---
+        self._photo_renamer_tab = PhotoRenamerTab()
+        self._tab_widget.addTab(self._photo_renamer_tab, "✏️ Renombrador de Fotos")
+
+        # --- TAB 6: Procesador IA ---
         self._photo_processor_tab = PhotoProcessorTab()
         self._tab_widget.addTab(self._photo_processor_tab, "🤖 Procesador IA")
 
-        # --- TAB 6: Envío Gratis ---
+        # --- TAB 7: Envío Gratis ---
         self._free_shipping_tab = FreeShippingTab(self._sql_service, self._ftp_service, parent=self)
         self._tab_widget.addTab(self._free_shipping_tab, "🚚 Envío Gratis")
 

@@ -206,8 +206,6 @@ class PhotoEditorTab(QWidget):
         self.img_offset_render_x = 0
         self.img_offset_render_y = 0
 
-        # Contador secuencial para renombrado
-        self.contador_secuencial = 1
         self.output_dir = ""
 
         self._setup_ui()
@@ -237,9 +235,6 @@ class PhotoEditorTab(QWidget):
         top_panel.addWidget(self.btn_clear)
         top_panel.addWidget(self.lbl_contador)
         top_panel.addStretch()
-
-        self.chk_secuencial = QCheckBox("Modo Secuencial (Auto -1, -2...)")
-        top_panel.addWidget(self.chk_secuencial)
         main_layout.addLayout(top_panel)
 
         # --- Splitter: árbol de archivos + editor visual ---
@@ -327,23 +322,8 @@ class PhotoEditorTab(QWidget):
 
         main_layout.addWidget(splitter, stretch=1)
 
-        # --- Panel inferior: renombrado + reescalado ---
+        # --- Panel inferior: reescalado ---
         bottom_config_layout = QHBoxLayout()
-
-        # Grupo de renombrado
-        group_rename = QGroupBox("Opciones de Renombrado")
-        rename_form = QFormLayout(group_rename)
-        self.txt_nuevo_nombre = QLineEdit()
-        self.txt_nuevo_nombre.returnPressed.connect(self._renombrar_foto)
-        self.btn_renombrar = QPushButton("Renombrar (Enter)")
-        self.btn_renombrar.setStyleSheet(
-            f"background-color: {COLOR_SUCCESS}; color: {COLOR_BG_PRIMARY}; font-weight: bold;"
-        )
-        self.btn_renombrar.clicked.connect(self._renombrar_foto)
-
-        rename_form.addRow("Nuevo nombre:", self.txt_nuevo_nombre)
-        rename_form.addRow("", self.btn_renombrar)
-        bottom_config_layout.addWidget(group_rename, stretch=1)
 
         # Grupo de reescalado
         group_resize = QGroupBox("Configuración de Reescalado 800x800")
@@ -378,7 +358,7 @@ class PhotoEditorTab(QWidget):
         chk_layout.addWidget(self.chk_del)
         resize_form.addRow("Opciones:", chk_layout)
 
-        bottom_config_layout.addWidget(group_resize, stretch=2)
+        bottom_config_layout.addWidget(group_resize)
         main_layout.addLayout(bottom_config_layout)
 
         # --- Salida y ejecución por lotes ---
@@ -421,8 +401,6 @@ class PhotoEditorTab(QWidget):
             self.btn_reset_zoom,
             self.btn_recortar,
             self.btn_eliminar,
-            self.btn_renombrar,
-            self.txt_nuevo_nombre,
         ]
         for w in widgets:
             w.setEnabled(estado)
@@ -526,17 +504,6 @@ class PhotoEditorTab(QWidget):
         self.indice_actual = row
         ruta_completa = self.image_paths[self.indice_actual]
         self.carpeta_actual = os.path.dirname(ruta_completa)
-
-        nombre_sin_ext, _ = os.path.splitext(os.path.basename(ruta_completa))
-        self.txt_nuevo_nombre.clear()
-
-        if self.chk_secuencial.isChecked():
-            self.txt_nuevo_nombre.setText(nombre_sin_ext.rsplit("-", 1)[0])
-        else:
-            self.txt_nuevo_nombre.setText(nombre_sin_ext)
-
-        self.txt_nuevo_nombre.setFocus()
-        self.txt_nuevo_nombre.selectAll()
 
         self.angulo_rotacion = 0
         self.factor_zoom = 1.0
@@ -850,7 +817,6 @@ class PhotoEditorTab(QWidget):
                 if not self.image_paths:
                     self.indice_actual = -1
                     self.canvas_imagen.clear()
-                    self.txt_nuevo_nombre.clear()
                     self._habilitar_controles(False)
                 else:
                     if self.indice_actual >= len(self.image_paths):
@@ -862,96 +828,7 @@ class PhotoEditorTab(QWidget):
                     self, "Error", f"No se pudo eliminar: {e}"
                 )
 
-    # ----------------------------------------------------------------
-    # Renombrado
-    # ----------------------------------------------------------------
 
-    def _renombrar_foto(self) -> None:
-        """Renombra la foto actual, la reescala a 800×800 y avanza a la siguiente."""
-        if self.indice_actual == -1 or not self.image_paths:
-            return
-        ruta_original = self.image_paths[self.indice_actual]
-        nombre_original = os.path.basename(ruta_original)
-        dir_original = os.path.dirname(ruta_original)
-
-        nuevo_nombre_base = self.txt_nuevo_nombre.text().strip()
-        if not nuevo_nombre_base:
-            return
-        _, ext = os.path.splitext(nombre_original)
-
-        if self.chk_jpg.isChecked():
-            ext = ".jpg"
-            save_format = "JPEG"
-        else:
-            ext_lower = ext.lower()
-            if ext_lower in (".jpg", ".jpeg"):
-                save_format, ext = "JPEG", ".jpg"
-            elif ext_lower == ".png":
-                save_format, ext = "PNG", ".png"
-            elif ext_lower == ".webp":
-                save_format, ext = "WEBP", ".webp"
-            else:
-                save_format, ext = "JPEG", ".jpg"
-
-        if self.chk_secuencial.isChecked():
-            nuevo_nombre_completo = (
-                f"{nuevo_nombre_base}-{self.contador_secuencial}{ext}"
-            )
-        else:
-            nuevo_nombre_completo = nuevo_nombre_base + ext
-
-        ruta_nueva = os.path.join(dir_original, nuevo_nombre_completo)
-
-        if os.path.exists(ruta_nueva) and os.path.abspath(
-            ruta_original
-        ) != os.path.abspath(ruta_nueva):
-            QMessageBox.warning(
-                self, "Atención", "Ya existe un archivo con ese nombre."
-            )
-            return
-
-        try:
-            if not self.img_pil_actual:
-                self.img_pil_actual = Image.open(ruta_original)
-
-            mode = "fit"
-            if self.rb_crop.isChecked():
-                mode = "crop"
-            elif self.rb_stretch.isChecked():
-                mode = "stretch"
-            fill_name = self.cb_color.currentText()
-
-            res_img = self._process_pil_image(self.img_pil_actual, mode, fill_name)
-            self.img_pil_actual.close()
-            self.img_pil_actual = None
-
-            self._save_with_smart_compression(res_img, ruta_nueva, save_format)
-
-            if os.path.abspath(ruta_original) != os.path.abspath(
-                ruta_nueva
-            ) and os.path.exists(ruta_original):
-                os.remove(ruta_original)
-
-            self.image_paths[self.indice_actual] = ruta_nueva
-            if self.tree.currentItem():
-                self.tree.currentItem().setText(0, nuevo_nombre_completo)
-                self.tree.currentItem().setText(1, "800 x 800")
-            if self.chk_secuencial.isChecked():
-                self.contador_secuencial += 1
-
-            proximo_indice = self.indice_actual + 1
-            if proximo_indice < len(self.image_paths):
-                item = self.tree.topLevelItem(proximo_indice)
-                self.tree.setCurrentItem(item)
-            else:
-                self.contador_secuencial = 1
-                QMessageBox.information(
-                    self, "¡Terminado!", "Fin de la lista."
-                )
-        except Exception as e:
-            QMessageBox.critical(
-                self, "Error", f"No se pudo renombrar: {e}"
-            )
 
     # ----------------------------------------------------------------
     # Procesamiento de imagen
