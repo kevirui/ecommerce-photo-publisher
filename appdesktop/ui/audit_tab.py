@@ -225,11 +225,14 @@ class AuditTab(QWidget):
         main_layout.addWidget(self._progress_bar)
 
         # ----------------- PANEL DE LOGS -----------------
-        main_layout.addWidget(QLabel("Registro de Operaciones (Logs)"))
+        self.lbl_log = QLabel("Registro de Operaciones (Logs)")
+        self.lbl_log.hide()
         self._txt_log = QTextEdit()
+        self._txt_log.hide()
         self._txt_log.setReadOnly(True)
         self._txt_log.setPlaceholderText("Las operaciones de auditoría aparecerán aquí...")
         self._txt_log.setMaximumHeight(120)
+        main_layout.addWidget(self.lbl_log)
         main_layout.addWidget(self._txt_log)
 
     # ================================================================
@@ -238,6 +241,7 @@ class AuditTab(QWidget):
 
     def _log(self, message: str) -> None:
         """Registra un mensaje con marca de tiempo en la consola local."""
+        logger.info(message)
         import datetime
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         self._txt_log.append(f"[{timestamp}] {message}")

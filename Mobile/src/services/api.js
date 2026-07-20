@@ -2,7 +2,7 @@ import axios from 'axios';
 import * as FileSystem from 'expo-file-system';
 
 // Cambia esta IP por la IP local de tu notebook en el WiFi (ej. 192.168.1.50)
-const BASE_URL = 'http://192.168.1.42:8000/api/v1';
+const BASE_URL = 'http://192.168.1.44:8000/api/v1';
 
 export const getPendingProducts = async () => {
   try {

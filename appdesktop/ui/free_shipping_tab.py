@@ -165,6 +165,7 @@ class FreeShippingTab(QWidget):
 
         # ----------------- PANEL DE CONSOLA / LOGS -----------------
         group_log = QGroupBox("Consola de Progreso")
+        group_log.hide()
         layout_log = QVBoxLayout(group_log)
         self._txt_log = QTextEdit()
         self._txt_log.setReadOnly(True)
@@ -179,6 +180,7 @@ class FreeShippingTab(QWidget):
 
     def _log(self, text: str) -> None:
         """Añade un texto a la consola de logs."""
+        logger.info(text)
         self._txt_log.append(text)
         # Auto-scroll
         self._txt_log.moveCursor(self._txt_log.textCursor().MoveOperation.End)

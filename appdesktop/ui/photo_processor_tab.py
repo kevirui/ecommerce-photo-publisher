@@ -431,9 +431,25 @@ class PhotoProcessorTab(QWidget):
 
     def __init__(self) -> None:
         super().__init__()
+        import configparser
+        from pathlib import Path
+        
+        self.config_path = Path(__file__).parent.parent / "config.ini"
+        self.logo_path_stored = ""
+        self.sello_path_stored = ""
+        if self.config_path.exists():
+            try:
+                config = configparser.ConfigParser(interpolation=None)
+                config.read(str(self.config_path), encoding="utf-8")
+                if config.has_section("ProcessorIA"):
+                    self.logo_path_stored = config.get("ProcessorIA", "logo_path", fallback="")
+                    self.sello_path_stored = config.get("ProcessorIA", "sello_path", fallback="")
+            except Exception as e:
+                print(f"Error cargando config en IA: {e}")
+
         escritorio = os.path.join(os.path.expanduser("~"), "Desktop")
-        self.ruta_logo_default = os.path.join(escritorio, "cimer_logo.png")
-        self.ruta_sello_default = os.path.join(escritorio, "cimer_sello.png")
+        self.ruta_logo_default = self.logo_path_stored if self.logo_path_stored else os.path.join(escritorio, "cimer_logo.png")
+        self.ruta_sello_default = self.sello_path_stored if self.sello_path_stored else os.path.join(escritorio, "cimer_sello.png")
 
         # Ajustes de imagen
         self.val_brillo = 1.0
@@ -463,6 +479,26 @@ class PhotoProcessorTab(QWidget):
         self.start_y = 0.0
 
         self._setup_ui()
+
+        # Conectar cambios de ruta a guardar configuración
+        self.txt_logo.textChanged.connect(self._guardar_config_ia)
+        self.txt_sello.textChanged.connect(self._guardar_config_ia)
+
+    def _guardar_config_ia(self) -> None:
+        """Guarda las rutas del logo y sello en config.ini."""
+        import configparser
+        try:
+            config = configparser.ConfigParser(interpolation=None)
+            if self.config_path.exists():
+                config.read(str(self.config_path), encoding="utf-8")
+            if not config.has_section("ProcessorIA"):
+                config.add_section("ProcessorIA")
+            config.set("ProcessorIA", "logo_path", self.txt_logo.text().strip())
+            config.set("ProcessorIA", "sello_path", self.txt_sello.text().strip())
+            with open(self.config_path, "w", encoding="utf-8") as f:
+                config.write(f)
+        except Exception as e:
+            print(f"Error guardando config en IA: {e}")
 
     # ----------------------------------------------------------------
     # Construcción de UI
@@ -560,17 +596,10 @@ class PhotoProcessorTab(QWidget):
         splitter.setSizes([350, 600])
         main_layout.addWidget(splitter, stretch=1)
 
-        # --- Panel de renombrado individual ---
-        rename_panel = QHBoxLayout()
-        rename_panel.addWidget(QLabel("Nuevo Nombre para Foto Actual:"))
-        self.txt_nuevo_nombre_ia = QLineEdit()
-        self.txt_nuevo_nombre_ia.returnPressed.connect(
-            self._procesar_y_guardar_individual
-        )
-        rename_panel.addWidget(self.txt_nuevo_nombre_ia, stretch=4)
-
+        # --- Panel de procesamiento individual ---
+        individual_panel = QHBoxLayout()
         self.btn_procesar_individual = QPushButton(
-            "⚡ Procesar e Importar (Enter)"
+            "⚡ Procesar e Importar Foto Seleccionada"
         )
         self.btn_procesar_individual.setStyleSheet(
             f"background-color: {COLOR_SUCCESS}; color: {COLOR_BG_PRIMARY}; font-weight: bold;"
@@ -578,8 +607,8 @@ class PhotoProcessorTab(QWidget):
         self.btn_procesar_individual.clicked.connect(
             self._procesar_y_guardar_individual
         )
-        rename_panel.addWidget(self.btn_procesar_individual, stretch=2)
-        main_layout.addLayout(rename_panel)
+        individual_panel.addWidget(self.btn_procesar_individual)
+        main_layout.addLayout(individual_panel)
 
         # --- Footer: estado + progreso ---
         footer = QHBoxLayout()
@@ -708,10 +737,6 @@ class PhotoProcessorTab(QWidget):
         """Selecciona una foto para vista previa con procesamiento IA."""
         self.foto_seleccionada_actual = archivo
         self.img_fondo_limpia = None
-        name_sin_ext, _ = os.path.splitext(archivo)
-        self.txt_nuevo_nombre_ia.setText(name_sin_ext)
-        self.txt_nuevo_nombre_ia.setFocus()
-        self.txt_nuevo_nombre_ia.selectAll()
         self._actualizar_vista_previa_actual()
 
     # ----------------------------------------------------------------
@@ -973,7 +998,7 @@ class PhotoProcessorTab(QWidget):
     # ----------------------------------------------------------------
 
     def _procesar_y_guardar_individual(self) -> None:
-        """Procesa la foto actual y la guarda con el nuevo nombre."""
+        """Procesa la foto actual y la guarda."""
         if not self.foto_seleccionada_actual:
             return
         c_in = self.txt_entrada.text()
@@ -982,9 +1007,8 @@ class PhotoProcessorTab(QWidget):
         if not c_in or not c_out or not c_arch:
             return
 
-        nuevo_nombre_base = self.txt_nuevo_nombre_ia.text().strip()
-        if not nuevo_nombre_base:
-            return
+        nombre_original, _ = os.path.splitext(self.foto_seleccionada_actual)
+        nuevo_nombre_base = nombre_original
 
         os.makedirs(c_out, exist_ok=True)
         os.makedirs(c_arch, exist_ok=True)
@@ -1068,7 +1092,6 @@ class PhotoProcessorTab(QWidget):
             )
 
             self._cargar_lista_imagenes()
-            self.txt_nuevo_nombre_ia.clear()
             self.foto_seleccionada_actual = None
             self.img_fondo_limpia = None
             self.img_tk_editor = None

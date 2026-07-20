@@ -187,6 +187,7 @@ class MainWindow(QMainWindow):
 
         # Panel de log
         log_container = self._create_log_panel()
+        log_container.hide()
         splitter.addWidget(log_container)
 
         splitter.setStretchFactor(0, 3)
@@ -787,6 +788,7 @@ class MainWindow(QMainWindow):
 
     def _on_log_message(self, message: str) -> None:
         """Slot: mensaje de log desde el worker."""
+        logger.info(message)
         self._txt_log.append(message)
         # Auto-scroll al final
         scrollbar = self._txt_log.verticalScrollBar()
@@ -1001,6 +1003,7 @@ class MainWindow(QMainWindow):
         Args:
             message: Mensaje a mostrar.
         """
+        logger.info(message)
         timestamp = time.strftime("%H:%M:%S")
         self._txt_log.append(f"{timestamp} — {message}")
         # Auto-scroll
