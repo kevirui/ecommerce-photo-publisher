@@ -9,7 +9,7 @@ y redimensionarlas a 800×800 por lotes con compresión inteligente.
 import io
 import os
 
-from PIL import Image, ImageOps
+from PIL import Image, ImageOps, ImageDraw
 
 from PyQt6.QtWidgets import (
     QWidget,
@@ -31,6 +31,7 @@ from PyQt6.QtWidgets import (
     QTreeWidget,
     QTreeWidgetItem,
     QFormLayout,
+    QSlider,
 )
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import (
@@ -53,6 +54,7 @@ from ui.styles import (
     COLOR_TEXT_PRIMARY,
     COLOR_BTN_PRIMARY_BG,
     COLOR_BTN_PRIMARY_TEXT,
+    COLOR_BTN_SECONDARY_BG,
     COLOR_BTN_DANGER_BG,
     COLOR_BTN_DANGER_TEXT,
     COLOR_WARNING,
@@ -200,6 +202,11 @@ class PhotoEditorTab(QWidget):
         self.coords_recorte_draw = None
         self.coords_recorte_actual = None
 
+        # Varita Mágica (Selección Difusa)
+        self.modo_varita = False
+        self.tolerance = 30
+        self.historial_ediciones = []
+
         # Escala de renderizado (para mapear coords canvas → imagen real)
         self.img_escala_render_x = 1.0
         self.img_escala_render_y = 1.0
@@ -276,6 +283,25 @@ class PhotoEditorTab(QWidget):
         self.chk_cuadrado = QCheckBox("Forzar Cuadrado (1:1 Web)")
         self.chk_cuadrado.setChecked(True)
 
+        self.btn_varita = QPushButton("🪄 Varita Mágica")
+        self.btn_varita.setStyleSheet(
+            f"background-color: {COLOR_BTN_SECONDARY_BG}; color: {COLOR_TEXT_PRIMARY};"
+        )
+        self.btn_varita.clicked.connect(self._toggle_varita)
+
+        self.lbl_tolerance = QLabel("Tolerancia: 30")
+        self.slider_tolerance = QSlider(Qt.Orientation.Horizontal)
+        self.slider_tolerance.setRange(0, 150)
+        self.slider_tolerance.setValue(30)
+        self.slider_tolerance.setFixedWidth(100)
+        self.slider_tolerance.valueChanged.connect(self._on_tolerance_changed)
+
+        self.btn_deshacer = QPushButton("↩️ Deshacer")
+        self.btn_deshacer.setStyleSheet(
+            f"background-color: {COLOR_BTN_SECONDARY_BG}; color: {COLOR_TEXT_PRIMARY};"
+        )
+        self.btn_deshacer.clicked.connect(self._undo)
+
         self.btn_confirmar_crop = QPushButton("✔️ Confirmar")
         self.btn_confirmar_crop.setStyleSheet(
             f"background-color: {COLOR_SUCCESS}; color: {COLOR_BG_PRIMARY}; font-weight: bold;"
@@ -301,6 +327,10 @@ class PhotoEditorTab(QWidget):
         controles_layout.addWidget(self.btn_reset_zoom)
         controles_layout.addWidget(self.btn_recortar)
         controles_layout.addWidget(self.chk_cuadrado)
+        controles_layout.addWidget(self.btn_varita)
+        controles_layout.addWidget(self.lbl_tolerance)
+        controles_layout.addWidget(self.slider_tolerance)
+        controles_layout.addWidget(self.btn_deshacer)
         controles_layout.addWidget(self.btn_confirmar_crop)
         controles_layout.addWidget(self.btn_cancelar_crop)
         controles_layout.addStretch()
@@ -392,6 +422,7 @@ class PhotoEditorTab(QWidget):
         QShortcut(QKeySequence(Qt.Key.Key_Left), self, lambda: self._navegar_lista(-1))
         QShortcut(QKeySequence(Qt.Key.Key_Delete), self, self._eliminar_foto)
         QShortcut(QKeySequence("Ctrl+R"), self, lambda: self._rotar_imagen(90))
+        QShortcut(QKeySequence("Ctrl+Z"), self, self._undo)
 
     def _habilitar_controles(self, estado: bool) -> None:
         """Habilita o deshabilita controles de edición."""
@@ -400,10 +431,13 @@ class PhotoEditorTab(QWidget):
             self.btn_rotar_der,
             self.btn_reset_zoom,
             self.btn_recortar,
+            self.btn_varita,
+            self.slider_tolerance,
             self.btn_eliminar,
         ]
         for w in widgets:
             w.setEnabled(estado)
+        self.btn_deshacer.setEnabled(estado and len(self.historial_ediciones) > 0)
 
     # ----------------------------------------------------------------
     # Navegación y carga
@@ -509,7 +543,9 @@ class PhotoEditorTab(QWidget):
         self.factor_zoom = 1.0
         self.pan_x = 0
         self.pan_y = 0
+        self.historial_ediciones.clear()
         self._desactivar_modo_recorte()
+        self._desactivar_modo_varita()
 
         self.canvas_imagen.blockSignals(True)
         self._cargar_y_mostrar_imagen(ruta_completa)
@@ -605,6 +641,7 @@ class PhotoEditorTab(QWidget):
         if not self.img_pil_actual:
             return
         if not self.modo_recorte:
+            self._desactivar_modo_varita()
             self.modo_recorte = True
             self.btn_recortar.setText("Salir de Recorte")
             self.btn_recortar.setStyleSheet(
@@ -624,6 +661,71 @@ class PhotoEditorTab(QWidget):
         self.canvas_imagen.unsetCursor()
         self._cancelar_recorte_dibujado()
 
+    def _toggle_varita(self) -> None:
+        """Alterna el modo varita mágica."""
+        if not self.img_pil_actual:
+            return
+        if not self.modo_varita:
+            self._desactivar_modo_recorte()
+            self.modo_varita = True
+            self.btn_varita.setText("Salir de Varita")
+            self.btn_varita.setStyleSheet(
+                f"background-color: {COLOR_ACCENT}; color: {COLOR_BG_PRIMARY}; font-weight: bold;"
+            )
+            self.canvas_imagen.setCursor(Qt.CursorShape.PointingHandCursor)
+        else:
+            self._desactivar_modo_varita()
+
+    def _desactivar_modo_varita(self) -> None:
+        """Desactiva el modo varita mágica y restaura el cursor."""
+        self.modo_varita = False
+        self.btn_varita.setText("🪄 Varita Mágica")
+        self.btn_varita.setStyleSheet(
+            f"background-color: {COLOR_BTN_SECONDARY_BG}; color: {COLOR_TEXT_PRIMARY};"
+        )
+        self.canvas_imagen.unsetCursor()
+
+    def _on_tolerance_changed(self, value: int) -> None:
+        """Slot: cambia la tolerancia del selector difuso."""
+        self.tolerance = value
+        self.lbl_tolerance.setText(f"Tolerancia: {value}")
+
+    def _push_historial(self) -> None:
+        """Guarda una copia de la imagen actual en el historial de deshacer."""
+        if self.img_pil_actual:
+            self.historial_ediciones.append(self.img_pil_actual.copy())
+            if len(self.historial_ediciones) > 15:
+                self.historial_ediciones.pop(0)
+            self.btn_deshacer.setEnabled(True)
+
+    def _undo(self) -> None:
+        """Revierte el último cambio de la imagen."""
+        if not self.historial_ediciones:
+            return
+        prev_img = self.historial_ediciones.pop()
+        self.img_pil_actual = prev_img
+        self.angulo_rotacion = 0
+        self._cargar_y_mostrar_imagen()
+        self._guardar_imagen_actual()
+        self.btn_deshacer.setEnabled(len(self.historial_ediciones) > 0)
+
+    def _guardar_imagen_actual(self) -> None:
+        """Guarda la imagen actual en el disco y actualiza su resolución."""
+        if not self.img_pil_actual or self.indice_actual == -1:
+            return
+        ruta_foto = self.image_paths[self.indice_actual]
+        try:
+            self.img_pil_actual.save(ruta_foto)
+            if self.tree.currentItem():
+                self.tree.currentItem().setText(
+                    1,
+                    f"{self.img_pil_actual.width} x {self.img_pil_actual.height}",
+                )
+        except Exception as e:
+            QMessageBox.critical(
+                self, "Error al guardar", f"No se pudo guardar la imagen: {e}"
+            )
+
     def _cancelar_recorte_dibujado(self) -> None:
         """Cancela el recorte actual y limpia la selección visual."""
         self.coords_recorte_actual = None
@@ -642,6 +744,7 @@ class PhotoEditorTab(QWidget):
             return
         lc, tc, rc, bc = self.coords_recorte_actual
         try:
+            self._push_historial()
             img_rotada = self.img_pil_actual.rotate(
                 self.angulo_rotacion, expand=True
             )
@@ -667,15 +770,7 @@ class PhotoEditorTab(QWidget):
             self.angulo_rotacion = 0
             self._cancelar_recorte_dibujado()
             self._cargar_y_mostrar_imagen()
-
-            ruta_foto = self.image_paths[self.indice_actual]
-            self.img_pil_actual.save(ruta_foto)
-            # Actualizar resolución en el árbol
-            if self.tree.currentItem():
-                self.tree.currentItem().setText(
-                    1,
-                    f"{self.img_pil_actual.width} x {self.img_pil_actual.height}",
-                )
+            self._guardar_imagen_actual()
         except Exception as e:
             QMessageBox.critical(
                 self, "Error al recortar", f"Problema al aplicar corte: {e}"
@@ -701,7 +796,7 @@ class PhotoEditorTab(QWidget):
         self._cargar_y_mostrar_imagen()
 
     def on_click_izquierdo(self, event) -> None:
-        """Maneja el click izquierdo: inicia recorte o pan."""
+        """Maneja el click izquierdo: inicia recorte o pan o varita."""
         if not self.img_pil_actual:
             return
         if self.modo_recorte:
@@ -710,6 +805,30 @@ class PhotoEditorTab(QWidget):
             self.crop_end_x = self.crop_start_x
             self.crop_end_y = self.crop_start_y
             self.canvas_imagen.update()
+        elif self.modo_varita:
+            cx = event.pos().x()
+            cy = event.pos().y()
+            # Mapear coordenadas a la imagen real
+            ix = int((cx - self.img_offset_render_x) * self.img_escala_render_x)
+            iy = int((cy - self.img_offset_render_y) * self.img_escala_render_y)
+
+            # Rotar temporalmente la imagen si tiene rotación (aunque ya se guarda rotada, por si acaso)
+            img_real = self.img_pil_actual.rotate(self.angulo_rotacion, expand=True)
+
+            if 0 <= ix < img_real.width and 0 <= iy < img_real.height:
+                self._push_historial()
+                try:
+                    if img_real.mode != "RGB":
+                        img_real = img_real.convert("RGB")
+                    ImageDraw.floodfill(img_real, (ix, iy), (255, 255, 255), thresh=self.tolerance)
+                    self.img_pil_actual = img_real
+                    self.angulo_rotacion = 0
+                    self._cargar_y_mostrar_imagen()
+                    self._guardar_imagen_actual()
+                except Exception as e:
+                    QMessageBox.critical(
+                        self, "Error", f"No se pudo aplicar la varita mágica: {e}"
+                    )
         else:
             if self.factor_zoom > 1.0:
                 self.start_x = event.pos().x()
@@ -776,17 +895,11 @@ class PhotoEditorTab(QWidget):
         if not self.img_pil_actual or self.indice_actual == -1:
             return
         try:
+            self._push_historial()
             self.img_pil_actual = self.img_pil_actual.rotate(angulo, expand=True)
-            ruta_foto = self.image_paths[self.indice_actual]
-            self.img_pil_actual.save(ruta_foto)
             self.angulo_rotacion = 0
             self._cargar_y_mostrar_imagen()
-            # Actualizar resolución en el árbol
-            if self.tree.currentItem():
-                self.tree.currentItem().setText(
-                    1,
-                    f"{self.img_pil_actual.width} x {self.img_pil_actual.height}",
-                )
+            self._guardar_imagen_actual()
         except Exception as e:
             QMessageBox.critical(
                 self, "Error al rotar", f"No se pudo guardar: {e}"
