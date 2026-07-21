@@ -84,12 +84,12 @@ class PublishService:
         """
         errors: list[str] = []
 
-        # Verificar imagen principal
-        if not article.has_main_image:
+        # Verificar que el artículo tenga al menos una imagen (principal o adicionales)
+        if not article.has_main_image and not article.additional_images:
             errors.append(
-                f"[{article.code}] No tiene imagen principal."
+                f"[{article.code}] No tiene ninguna imagen para publicar (ni principal ni adicionales)."
             )
-        elif not article.main_image.exists():
+        elif article.has_main_image and not article.main_image.exists():
             errors.append(
                 f"[{article.code}] Imagen principal no encontrada en disco: "
                 f"{article.main_image_name}"
@@ -293,49 +293,55 @@ class PublishService:
             True si la publicación fue exitosa.
         """
         # --- 1. Subir imagen principal al FTP ---
-        main_remote_name = article.main_image_name
-        should_upload_main = self._check_ftp_conflict(
-            article.code,
-            main_remote_name,
-            ftp_conflict_policy,
-            conflict_callback,
-            progress_callback,
-        )
-
-        if should_upload_main:
-            self._emit_progress(
+        if article.has_main_image:
+            main_remote_name = article.main_image_name
+            should_upload_main = self._check_ftp_conflict(
+                article.code,
+                main_remote_name,
+                ftp_conflict_policy,
+                conflict_callback,
                 progress_callback,
-                f"[{article.code}] Subiendo {main_remote_name} al FTP..."
             )
-            try:
-                self._ftp.upload_file(article.main_image, main_remote_name)
+
+            if should_upload_main:
                 self._emit_progress(
                     progress_callback,
-                    f"[{article.code}] FTP OK: {main_remote_name} ✓"
+                    f"[{article.code}] Subiendo {main_remote_name} al FTP..."
                 )
-            except (FtpUploadError, FtpServiceError) as e:
-                article.mark_error(f"FTP Error (principal): {e}")
+                try:
+                    self._ftp.upload_file(article.main_image, main_remote_name)
+                    self._emit_progress(
+                        progress_callback,
+                        f"[{article.code}] FTP OK: {main_remote_name} ✓"
+                    )
+                except (FtpUploadError, FtpServiceError) as e:
+                    article.mark_error(f"FTP Error (principal): {e}")
+                    return False
+            else:
+                self._emit_progress(
+                    progress_callback,
+                    f"[{article.code}] FTP omitido: {main_remote_name} (ya existe)"
+                )
+
+            # --- 2. Ejecutar SP principal ---
+            self._emit_progress(
+                progress_callback,
+                f"[{article.code}] Ejecutando SP publicación principal..."
+            )
+            try:
+                self._repo.publicar_articulo(article.code, main_remote_name)
+                self._emit_progress(
+                    progress_callback,
+                    f"[{article.code}] SQL OK: eco_articulos_publi_web_actua ✓"
+                )
+            except SqlExecutionError as e:
+                article.mark_error(f"SQL Error (principal): {e}")
                 return False
         else:
             self._emit_progress(
                 progress_callback,
-                f"[{article.code}] FTP omitido: {main_remote_name} (ya existe)"
+                f"[{article.code}] Sin imagen principal, omitiendo subida principal."
             )
-
-        # --- 2. Ejecutar SP principal ---
-        self._emit_progress(
-            progress_callback,
-            f"[{article.code}] Ejecutando SP publicación principal..."
-        )
-        try:
-            self._repo.publicar_articulo(article.code, main_remote_name)
-            self._emit_progress(
-                progress_callback,
-                f"[{article.code}] SQL OK: eco_articulos_publi_web_actua ✓"
-            )
-        except SqlExecutionError as e:
-            article.mark_error(f"SQL Error (principal): {e}")
-            return False
 
         # --- 3. Por cada imagen adicional ---
         for img_path in article.additional_images:

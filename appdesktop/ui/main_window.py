@@ -443,12 +443,12 @@ class MainWindow(QMainWindow):
         try:
             self._config.read(str(self._config_path), encoding="utf-8")
 
-            # Cargar ruta de imágenes en el campo de texto
-            image_folder = self._config.get(
-                "General", "image_folder", fallback=""
-            )
-            if image_folder:
-                self._txt_image_folder.setText(image_folder)
+            # Cargar ruta de imágenes en el campo de texto (deshabilitado para que inicie vacío y no se sobrescriba al conectar)
+            # image_folder = self._config.get(
+            #     "General", "image_folder", fallback=""
+            # )
+            # if image_folder:
+            #     self._txt_image_folder.setText(image_folder)
 
             logger.debug("Configuración cargada en ventana principal.")
 

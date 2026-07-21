@@ -162,6 +162,13 @@ class Article:
         Returns:
             Cadena con el índice (ej: '_1') o cadena vacía si no se encuentra.
         """
+        import re
+        # Intentar extraer el índice del nombre del archivo (ej. R123_2.jpg -> _2)
+        stem = image_path.stem
+        match = re.search(r'[_-](\d+)$', stem)
+        if match:
+            return f"_{match.group(1)}"
+
         try:
             position = self.additional_images.index(image_path)
             return f"_{position + 1}"
