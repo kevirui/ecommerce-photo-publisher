@@ -244,12 +244,9 @@ class SyncService:
                 if not is_publi:
                     estado = "PENDIENTE"
                     observaciones = "El artículo no está marcado para publicar en la web."
-                elif not has_any_image:
-                    estado = "INCOMPLETO"
-                    observaciones = "Marcado para publicar pero no tiene ninguna imagen (principal o adicional)."
                 else:
                     estado = "PUBLICADO"
-                    observaciones = "Artículo publicado (tiene al menos una imagen)."
+                    observaciones = "Artículo publicado."
 
                 art_data = {
                     "codigo": code_upper,
@@ -324,12 +321,9 @@ class SyncService:
             if not is_publi:
                 estado = "PENDIENTE"
                 observaciones = "El artículo no está marcado para publicar en la web."
-            elif not has_any_image:
-                estado = "INCOMPLETO"
-                observaciones = "Marcado para publicar pero no tiene ninguna imagen (principal o adicional)."
             else:
                 estado = "PUBLICADO"
-                observaciones = "Artículo publicado (tiene al menos una imagen)."
+                observaciones = "Artículo publicado."
 
             art_data = {
                 "codigo": code,
@@ -381,18 +375,15 @@ class SyncService:
         ws = wb.active
         ws.title = "Artículos"
 
-        headers = ["Código", "Descripción", "Publicado en Web", "Imagen Principal", "Cantidad Imágenes", "Estado", "Observaciones"]
+        headers = ["Código", "Descripción", "Estado", "Stock"]
         ws.append(headers)
 
         for item in data:
             ws.append([
                 item.get("codigo", ""),
                 item.get("descripcion", ""),
-                item.get("publicado_db", ""),
-                item.get("imagen_principal", ""),
-                item.get("cant_imagenes", 0),
                 item.get("estado", ""),
-                item.get("observaciones", "")
+                float(item.get("cant_stock", 0.0))
             ])
 
         for col in ws.columns:
@@ -406,7 +397,7 @@ class SyncService:
 
     def export_pending_auto(self, output_dir: Path, data: List[Dict[str, Any]]) -> Path:
         """
-        Genera automáticamente el archivo 'Pendientes.xlsx' con artículos PENDIENTE que tengan stock.
+        Genera automáticamente el archivo 'Pendientes.xlsx' con todos los artículos analizados.
         """
         file_path = output_dir / "Pendientes.xlsx"
         logger.info(f"Generando automáticamente el reporte de pendientes: {file_path}")
@@ -415,23 +406,18 @@ class SyncService:
         ws = wb.active
         ws.title = "Pendientes"
 
-        headers = ["Código", "Descripción", "Estado", "Stock", "Cantidad imágenes", "Observaciones"]
+        headers = ["Código", "Descripción", "Estado", "Stock"]
         ws.append(headers)
 
         count = 0
         for item in data:
-            if item.get("estado") == "PENDIENTE":
-                cant_stock = float(item.get("cant_stock", 0.0))
-                if cant_stock > 0:
-                    ws.append([
-                        item.get("codigo", ""),
-                        item.get("descripcion", ""),
-                        item.get("estado", ""),
-                        cant_stock,
-                        item.get("cant_imagenes", 0),
-                        item.get("observaciones", "")
-                    ])
-                    count += 1
+            ws.append([
+                item.get("codigo", ""),
+                item.get("descripcion", ""),
+                item.get("estado", ""),
+                float(item.get("cant_stock", 0.0))
+            ])
+            count += 1
 
         for col in ws.columns:
             max_len = max(len(str(cell.value or '')) for cell in col)
