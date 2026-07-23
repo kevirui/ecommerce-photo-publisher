@@ -19,6 +19,7 @@ from PyQt6.QtWidgets import (
     QLabel,
     QLineEdit,
     QPushButton,
+    QComboBox,
     QTableWidget,
     QTableWidgetItem,
     QHeaderView,
@@ -130,20 +131,22 @@ class AuditTab(QWidget):
         layout_actions.addStretch()
         main_layout.addWidget(group_actions)
 
-        # ----------------- PANEL DE BUSCADOR Y FILTROS RÁPIDOS -----------------
-        layout_filters = QHBoxLayout()
-        layout_filters.setSpacing(10)
+        # ----------------- PANEL DE BUSCADOR Y FILTROS POR CATEGORÍA -----------------
+        group_filters = QGroupBox("Buscador y Filtros por Categoría (Rubro / Grupo / Subgrupo)")
+        grid_filters = QGridLayout(group_filters)
+        grid_filters.setSpacing(8)
 
-        layout_filters.addWidget(QLabel("Buscar:"))
+        # Buscador por texto (Código, Descripción, Rubro, Grupo, Subgrupo)
+        grid_filters.addWidget(QLabel("Buscar:"), 0, 0)
         self._txt_search = QLineEdit()
-        self._txt_search.setPlaceholderText("Buscar por código o descripción...")
+        self._txt_search.setPlaceholderText("Buscar por código, descripción, rubro, grupo...")
         self._txt_search.textChanged.connect(self._on_search_changed)
-        layout_filters.addWidget(self._txt_search, 1)
+        grid_filters.addWidget(self._txt_search, 0, 1, 1, 3)
 
-        layout_filters.addWidget(QLabel("Filtro:"))
+        # Filtro por Estado
+        grid_filters.addWidget(QLabel("Estado:"), 0, 4)
         self._btn_filter_dropdown = QPushButton("Todos ▼")
-        self._btn_filter_dropdown.setFixedWidth(160)
-
+        self._btn_filter_dropdown.setFixedWidth(150)
         self._menu_filters = QMenu(self)
         filter_options = [
             "Todos",
@@ -157,16 +160,36 @@ class AuditTab(QWidget):
             action = self._menu_filters.addAction(opt)
             action.triggered.connect(lambda checked, o=opt: self._on_filter_selected(o))
         self._btn_filter_dropdown.setMenu(self._menu_filters)
-        layout_filters.addWidget(self._btn_filter_dropdown)
+        grid_filters.addWidget(self._btn_filter_dropdown, 0, 5)
 
-        main_layout.addLayout(layout_filters)
+        # Filtros en Cascada (Rubro, Grupo, Subgrupo)
+        grid_filters.addWidget(QLabel("Rubro:"), 1, 0)
+        self._cmb_rubro = QComboBox()
+        self._cmb_rubro.addItem("TODOS")
+        self._cmb_rubro.currentIndexChanged.connect(self._on_rubro_changed)
+        grid_filters.addWidget(self._cmb_rubro, 1, 1)
+
+        grid_filters.addWidget(QLabel("Grupo:"), 1, 2)
+        self._cmb_grupo = QComboBox()
+        self._cmb_grupo.addItem("TODOS")
+        self._cmb_grupo.currentIndexChanged.connect(self._on_grupo_changed)
+        grid_filters.addWidget(self._cmb_grupo, 1, 3)
+
+        grid_filters.addWidget(QLabel("Subgrupo:"), 1, 4)
+        self._cmb_subgrupo = QComboBox()
+        self._cmb_subgrupo.addItem("TODOS")
+        self._cmb_subgrupo.currentIndexChanged.connect(self._on_subgrupo_changed)
+        grid_filters.addWidget(self._cmb_subgrupo, 1, 5)
+
+        main_layout.addWidget(group_filters)
 
         # ----------------- TABLA DE RESULTADOS -----------------
         self._table = QTableWidget()
-        self._table.setColumnCount(5)
+        self._table.setColumnCount(6)
         self._table.setHorizontalHeaderLabels([
             "Código",
             "Descripción",
+            "Rubro / Grupo",
             "Publicado",
             "Estado",
             "Observaciones",
@@ -181,7 +204,8 @@ class AuditTab(QWidget):
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(5, QHeaderView.ResizeMode.Stretch)
 
         main_layout.addWidget(self._table, 3)
 
@@ -300,6 +324,7 @@ class AuditTab(QWidget):
     def _on_worker_finished(self, results: list, stats: dict) -> None:
         """Llamado cuando finaliza la auditoría."""
         self._all_audit_items = results
+        self._update_category_combos()
         self._update_summary_ui(stats)
         self._apply_filters()
         self._cleanup_worker()
@@ -348,20 +373,122 @@ class AuditTab(QWidget):
                 QMessageBox.critical(self, "Error al exportar", f"No se pudo guardar la auditoría:\n{e}")
 
     # ================================================================
+    # Manejo de Filtros en Cascada (Rubro, Grupo, Subgrupo)
+    # ================================================================
+
+    def _update_category_combos(self) -> None:
+        """Puebla el ComboBox de Rubros y desencadena el llenado de Grupos y Subgrupos."""
+        self._cmb_rubro.blockSignals(True)
+        self._cmb_grupo.blockSignals(True)
+        self._cmb_subgrupo.blockSignals(True)
+
+        self._cmb_rubro.clear()
+        self._cmb_rubro.addItem("TODOS")
+
+        rubros = sorted({item.get("rubro", "OTROS") for item in self._all_audit_items})
+        for r in rubros:
+            self._cmb_rubro.addItem(r)
+
+        self._populate_grupos_combo()
+        self._populate_subgrupos_combo()
+
+        self._cmb_rubro.blockSignals(False)
+        self._cmb_grupo.blockSignals(False)
+        self._cmb_subgrupo.blockSignals(False)
+
+    def _populate_grupos_combo(self) -> None:
+        """Llena el ComboBox de Grupos según el Rubro seleccionado."""
+        self._cmb_grupo.clear()
+        self._cmb_grupo.addItem("TODOS")
+
+        selected_rubro = self._cmb_rubro.currentText()
+        if selected_rubro == "TODOS":
+            grupos = sorted({item.get("grupo", "OTROS") for item in self._all_audit_items})
+        else:
+            grupos = sorted({
+                item.get("grupo", "OTROS")
+                for item in self._all_audit_items
+                if item.get("rubro", "OTROS") == selected_rubro
+            })
+
+        for g in grupos:
+            self._cmb_grupo.addItem(g)
+
+    def _populate_subgrupos_combo(self) -> None:
+        """Llena el ComboBox de Subgrupos según Rubro y Grupo seleccionados."""
+        self._cmb_subgrupo.clear()
+        self._cmb_subgrupo.addItem("TODOS")
+
+        selected_rubro = self._cmb_rubro.currentText()
+        selected_grupo = self._cmb_grupo.currentText()
+
+        filtered_items = self._all_audit_items
+        if selected_rubro != "TODOS":
+            filtered_items = [it for it in filtered_items if it.get("rubro", "OTROS") == selected_rubro]
+        if selected_grupo != "TODOS":
+            filtered_items = [it for it in filtered_items if it.get("grupo", "OTROS") == selected_grupo]
+
+        subgrupos = sorted({item.get("subgrupo", "OTROS") for item in filtered_items})
+        for sg in subgrupos:
+            self._cmb_subgrupo.addItem(sg)
+
+    def _on_rubro_changed(self) -> None:
+        """Manejador al cambiar la selección de Rubro."""
+        self._cmb_grupo.blockSignals(True)
+        self._cmb_subgrupo.blockSignals(True)
+
+        self._populate_grupos_combo()
+        self._populate_subgrupos_combo()
+
+        self._cmb_grupo.blockSignals(False)
+        self._cmb_subgrupo.blockSignals(False)
+
+        self._apply_filters()
+
+    def _on_grupo_changed(self) -> None:
+        """Manejador al cambiar la selección de Grupo."""
+        self._cmb_subgrupo.blockSignals(True)
+
+        self._populate_subgrupos_combo()
+
+        self._cmb_subgrupo.blockSignals(False)
+
+        self._apply_filters()
+
+    def _on_subgrupo_changed(self) -> None:
+        """Manejador al cambiar la selección de Subgrupo."""
+        self._apply_filters()
+
+    # ================================================================
     # Filtrado y llenado de tabla
     # ================================================================
 
     def _apply_filters(self) -> None:
-        """Filtra y actualiza la tabla de resultados."""
+        """Filtra y actualiza la tabla de resultados según Rubro, Grupo, Subgrupo, Estado y Buscador."""
         search_text = self._txt_search.text().strip().upper()
+        selected_rubro = self._cmb_rubro.currentText() if hasattr(self, "_cmb_rubro") else "TODOS"
+        selected_grupo = self._cmb_grupo.currentText() if hasattr(self, "_cmb_grupo") else "TODOS"
+        selected_subgrupo = self._cmb_subgrupo.currentText() if hasattr(self, "_cmb_subgrupo") else "TODOS"
+
         filtered: List[Dict[str, Any]] = []
 
         for item in self._all_audit_items:
+            rubro = item.get("rubro", "OTROS")
+            grupo = item.get("grupo", "OTROS")
+            subgrupo = item.get("subgrupo", "OTROS")
             state = item.get("estado", "")
             code = item.get("codigo", "").upper()
             desc = item.get("descripcion", "").upper()
 
-            # 1. Validar filtro rápido
+            # 1. Validar Filtros de Categorías (Cascada)
+            if selected_rubro != "TODOS" and rubro != selected_rubro:
+                continue
+            if selected_grupo != "TODOS" and grupo != selected_grupo:
+                continue
+            if selected_subgrupo != "TODOS" and subgrupo != selected_subgrupo:
+                continue
+
+            # 2. Validar Filtro de Estado
             if self._current_filter == "Correctos" and state != "CORRECTO":
                 continue
             elif self._current_filter == "Pendientes" and state != "PENDIENTE":
@@ -373,9 +500,12 @@ class AuditTab(QWidget):
             elif self._current_filter == "Advertencias" and state != "ADVERTENCIA":
                 continue
 
-            # 2. Validar buscador
-            if search_text and (search_text not in code and search_text not in desc):
-                continue
+            # 3. Validar Buscador en tiempo real (Código, Descripción, Rubro, Grupo, Subgrupo)
+            if search_text:
+                r_up, g_up, sg_up = rubro.upper(), grupo.upper(), subgrupo.upper()
+                if (search_text not in code and search_text not in desc and
+                    search_text not in r_up and search_text not in g_up and search_text not in sg_up):
+                    continue
 
             filtered.append(item)
 
@@ -401,6 +531,7 @@ class AuditTab(QWidget):
             # Items
             item_code = QTableWidgetItem(item.get("codigo", ""))
             item_desc = QTableWidgetItem(item.get("descripcion", ""))
+            item_category = QTableWidgetItem(f"{item.get('rubro', 'OTROS')} | {item.get('grupo', 'OTROS')}")
             item_pub = QTableWidgetItem("Sí" if item.get("publicado") == "S" else "No" if item.get("publicado") == "N" else "")
             item_state = QTableWidgetItem(state)
             item_obs = QTableWidgetItem(item.get("observaciones", ""))
@@ -413,7 +544,7 @@ class AuditTab(QWidget):
             font_bold = QFont("Segoe UI", 9, QFont.Weight.Bold)
             item_state.setFont(font_bold)
 
-            row_items = [item_code, item_desc, item_pub, item_state, item_obs]
+            row_items = [item_code, item_desc, item_category, item_pub, item_state, item_obs]
             for col_idx, it in enumerate(row_items):
                 it.setForeground(txt_color)
                 it.setBackground(bg_color)

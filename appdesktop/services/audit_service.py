@@ -79,7 +79,7 @@ class AuditService:
         # 2. Consultar Base de Datos
         logger.info("Consultando artículos de la base de datos...")
         
-        # Traer artículos con count de adicionales
+        # Traer artículos con count de adicionales y agrupaciones (rubro, grupo, subgrupo)
         query_articles = """
         SELECT
             A.COD_ARTICULO,
@@ -87,16 +87,25 @@ class AuditService:
             A.WEB_PUBLI,
             A.WEB_LINK,
             A.WEB_IMAGEN_PROVE,
+            G1.DESCRIP_AGRU AS RUBRO,
+            G2.DESCRIP_AGRU AS GRUPO,
+            G3.DESCRIP_AGRU AS SUBGRUPO,
             COUNT(I.COD_ARTICULO) AS IMAGENES
         FROM ARTICULOS A
         LEFT JOIN ARTICULOS_IMAGENES I
             ON A.COD_ARTICULO = I.COD_ARTICULO
+        LEFT JOIN AGRUPACIONES G1 ON A.AGRU_1 = G1.CODI_AGRU AND G1.NUM_AGRU = 1
+        LEFT JOIN AGRUPACIONES G2 ON A.AGRU_2 = G2.CODI_AGRU AND G2.NUM_AGRU = 2
+        LEFT JOIN AGRUPACIONES G3 ON A.AGRU_3 = G3.CODI_AGRU AND G3.NUM_AGRU = 3
         GROUP BY
             A.COD_ARTICULO,
             A.DESCRIP_ARTI,
             A.WEB_PUBLI,
             A.WEB_LINK,
-            A.WEB_IMAGEN_PROVE
+            A.WEB_IMAGEN_PROVE,
+            G1.DESCRIP_AGRU,
+            G2.DESCRIP_AGRU,
+            G3.DESCRIP_AGRU
         """
         
         db_articles = self._sql_service.execute(query_articles)
@@ -127,11 +136,12 @@ class AuditService:
             web_publi = art.get("WEB_PUBLI", "")
             web_link = art.get("WEB_LINK", "")
             web_img = str(art.get("WEB_IMAGEN_PROVE", "")).strip().upper()
+            rubro = str(art.get("RUBRO", "") or "").strip() or "OTROS"
+            grupo = str(art.get("GRUPO", "") or "").strip() or "OTROS"
+            subgrupo = str(art.get("SUBGRUPO", "") or "").strip() or "OTROS"
 
             # Extraer el conteo de adicionales
-            known_keys = {"COD_ARTICULO", "DESCRIP_ARTI", "WEB_PUBLI", "WEB_LINK", "WEB_IMAGEN_PROVE"}
-            count_key = next((k for k in art.keys() if k not in known_keys), None)
-            cant_adicionales_sql = int(art[count_key]) if count_key is not None and art[count_key] is not None else 0
+            cant_adicionales_sql = int(art.get("IMAGENES", 0) or 0)
 
             # Validar existencia de imagen principal en FTP
             main_img_exists = False
@@ -209,7 +219,10 @@ class AuditService:
                 "cant_adicionales": cant_adicionales_sql,
                 "estado": estado,
                 "observaciones": observaciones,
-                "web_link": web_link if web_link else ""
+                "web_link": web_link if web_link else "",
+                "rubro": rubro,
+                "grupo": grupo,
+                "subgrupo": subgrupo,
             })
 
             if progress_callback and (i % max(1, total_items // 50) == 0 or i == total_items - 1):
@@ -249,6 +262,9 @@ class AuditService:
         headers = [
             "Código",
             "Descripción",
+            "Rubro",
+            "Grupo",
+            "Subgrupo",
             "Publicado",
             "Estado",
             "Observaciones"
@@ -259,6 +275,9 @@ class AuditService:
             ws.append([
                 item.get("codigo", ""),
                 item.get("descripcion", ""),
+                item.get("rubro", "OTROS"),
+                item.get("grupo", "OTROS"),
+                item.get("subgrupo", "OTROS"),
                 item.get("publicado", ""),
                 item.get("estado", ""),
                 item.get("observaciones", "")
