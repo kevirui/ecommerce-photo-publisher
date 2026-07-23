@@ -34,7 +34,7 @@ from PyQt6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
 )
-from PyQt6.QtCore import Qt, QSize
+from PyQt6.QtCore import Qt, QSize, QThread, pyqtSignal
 from PyQt6.QtGui import (
     QPixmap,
     QImage,
@@ -264,8 +264,168 @@ class PhotoEditorCanvas(QLabel):
     def mouseMoveEvent(self, event) -> None:
         self.parent_tab.on_movimiento_izquierdo(event)
 
-    def mouseReleaseEvent(self, event) -> None:
-        self.parent_tab.on_soltar_izquierdo(event)
+
+
+# ============================================================
+# Worker Asíncrono para Vista Previa IA
+# ============================================================
+
+
+class AIPreviewWorker(QThread):
+    """
+    Worker en segundo plano para procesar la vista previa por IA
+    (remoción de fondo con rembg y redimensionado a 800x800).
+    """
+
+    preview_ready = pyqtSignal(object, str)
+    preview_error = pyqtSignal(str)
+
+    def __init__(
+        self,
+        img_pil: Image.Image,
+        modo: str,
+        fondo: str,
+        rembg: bool,
+        session=None,
+        parent=None,
+    ) -> None:
+        super().__init__(parent)
+        self.img_pil = img_pil.copy()
+        self.modo = modo
+        self.fondo = fondo
+        self.rembg = rembg
+        self.session = session
+        self.is_cancelled = False
+
+    def cancel(self) -> None:
+        self.is_cancelled = True
+
+    def run(self) -> None:
+        if self.is_cancelled:
+            return
+        try:
+            img = self.img_pil
+            if self.rembg and not self.is_cancelled:
+                try:
+                    from rembg import remove, new_session
+
+                    buf = io.BytesIO()
+                    img.save(buf, format="PNG")
+                    sess = self.session
+                    if sess is None:
+                        try:
+                            sess = new_session("birefnet-general-use")
+                        except Exception:
+                            sess = new_session("isnet-general-use")
+                    out_bytes = remove(buf.getvalue(), session=sess)
+                    if self.is_cancelled:
+                        return
+                    img = Image.open(io.BytesIO(out_bytes)).convert("RGBA")
+                    bbox = img.getbbox()
+                    if bbox:
+                        img = img.crop(bbox)
+                except Exception as e:
+                    print(f"Error al remover fondo en vista previa IA: {e}")
+
+            if self.is_cancelled:
+                return
+
+            if img.mode not in ("RGB", "RGBA"):
+                img = img.convert(
+                    "RGBA"
+                    if "transparency" in img.info or img.mode == "P"
+                    else "RGB"
+                )
+
+            target_size = (800, 800)
+            if self.modo == "stretch":
+                res = img.resize(target_size, Image.Resampling.LANCZOS)
+            elif self.modo == "crop":
+                res = ImageOps.fit(img, target_size, Image.Resampling.LANCZOS)
+            else:
+                img.thumbnail(target_size, Image.Resampling.LANCZOS)
+                res = img
+
+            color_map = {
+                "Negro": (0, 0, 0),
+                "Blanco": (255, 255, 255),
+                "Gris": (128, 128, 128),
+            }
+            if self.fondo == "Transparente":
+                bg = Image.new("RGBA", target_size, (0, 0, 0, 0))
+            else:
+                bg_color = color_map.get(self.fondo, (255, 255, 255))
+                if res.mode == "RGBA":
+                    bg = Image.new("RGBA", target_size, bg_color + (255,))
+                else:
+                    bg = Image.new("RGB", target_size, bg_color)
+
+            x = (target_size[0] - res.width) // 2
+            y = (target_size[1] - res.height) // 2
+            bg.paste(res, (x, y), res if res.mode == "RGBA" else None)
+
+            if self.is_cancelled:
+                return
+
+            status = f"800×800 | Fondo: {self.fondo} | Método: {self.modo.capitalize()} | IA: {'Sí' if self.rembg else 'No'}"
+            self.preview_ready.emit(bg, status)
+        except Exception as e:
+            if not self.is_cancelled:
+                self.preview_error.emit(str(e))
+
+
+class PhotoEditorAIPreviewCanvas(QLabel):
+    """
+    Canvas para visualizar la imagen procesada por IA en la vista previa.
+    """
+
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.setScaledContents(False)
+        self.setMinimumSize(300, 250)
+        self.pil_img: Image.Image | None = None
+        self.status_text: str = "Selecciona una foto para ver la vista previa IA"
+
+    def set_image(self, pil_img: Image.Image | None, status_text: str = "") -> None:
+        self.pil_img = pil_img
+        if status_text:
+            self.status_text = status_text
+        self.update_render()
+
+    def set_loading(self, text: str = "Procesando con IA...") -> None:
+        self.pil_img = None
+        self.status_text = text
+        self.clear()
+        self.update()
+
+    def update_render(self) -> None:
+        if self.pil_img is None:
+            self.clear()
+            self.update()
+            return
+
+        w_max = max(100, self.width() - 20)
+        h_max = max(100, self.height() - 20)
+        img_copy = self.pil_img.copy()
+        img_copy.thumbnail((w_max, h_max), Image.Resampling.LANCZOS)
+        self.setPixmap(pil_to_pixmap(img_copy))
+
+    def paintEvent(self, event) -> None:
+        super().paintEvent(event)
+        if self.pil_img is None:
+            painter = QPainter(self)
+            painter.setPen(QColor(COLOR_TEXT_PRIMARY))
+            painter.drawText(
+                self.rect(),
+                Qt.AlignmentFlag.AlignCenter,
+                self.status_text,
+            )
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        if self.pil_img:
+            self.update_render()
 
 
 # ============================================================
@@ -333,6 +493,12 @@ class PhotoEditorTab(QWidget):
         self.resize_limit = True
         self.resize_del = False
 
+        # Vista Previa IA
+        self.view_mode = "editor"  # "editor", "compare", "preview"
+        self.ai_pil_preview: Image.Image | None = None
+        self._ai_worker: AIPreviewWorker | None = None
+        self._rembg_session = None
+
         self._setup_ui()
         self._bind_shortcuts()
 
@@ -380,6 +546,22 @@ class PhotoEditorTab(QWidget):
         right_widget = QWidget()
         right_layout = QVBoxLayout(right_widget)
         right_layout.setContentsMargins(0, 0, 0, 0)
+
+        # Barra superior de selección de vista previa IA
+        view_bar = QHBoxLayout()
+        view_bar.addWidget(QLabel("Modo de Vista:"))
+
+        self.btn_view_editor = QPushButton("Editor Original")
+        self.btn_view_ai = QPushButton("Vista Previa IA")
+
+        self.btn_view_editor.clicked.connect(lambda: self._set_view_mode("editor"))
+        self.btn_view_ai.clicked.connect(lambda: self._set_view_mode("preview"))
+
+        view_bar.addWidget(self.btn_view_editor)
+        view_bar.addWidget(self.btn_view_ai)
+        view_bar.addStretch()
+
+        right_layout.addLayout(view_bar)
 
         # Iconos SVG de la barra de herramientas
         ic_rot_izq = QIcon(os.path.join(ICONS_DIR, "rotate_left.svg"))
@@ -492,7 +674,17 @@ class PhotoEditorTab(QWidget):
         controles_layout.addWidget(self.btn_eliminar)
         right_layout.addLayout(controles_layout)
 
-        # Canvas de visualización
+        # Contenedor de Canvases
+        self.canvas_splitter = QSplitter(Qt.Orientation.Horizontal)
+
+        # Panel Editor Canvas
+        self.canvas_editor_container = QWidget()
+        editor_cont_layout = QVBoxLayout(self.canvas_editor_container)
+        editor_cont_layout.setContentsMargins(0, 0, 0, 0)
+        lbl_ed_hdr = QLabel("Foto Original / Edición Manual")
+        lbl_ed_hdr.setStyleSheet("font-weight: bold; color: #a6adc8; padding-bottom: 2px;")
+        editor_cont_layout.addWidget(lbl_ed_hdr)
+
         self.canvas_imagen = PhotoEditorCanvas(self)
         self.canvas_imagen.setStyleSheet(
             f"background-color: #11111b; border: 1px solid {COLOR_BORDER};"
@@ -500,7 +692,38 @@ class PhotoEditorTab(QWidget):
         self.canvas_imagen.setSizePolicy(
             QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Ignored
         )
-        right_layout.addWidget(self.canvas_imagen, stretch=1)
+        editor_cont_layout.addWidget(self.canvas_imagen, stretch=1)
+        self.canvas_splitter.addWidget(self.canvas_editor_container)
+
+        # Panel AI Preview Canvas
+        self.canvas_ai_container = QWidget()
+        ai_cont_layout = QVBoxLayout(self.canvas_ai_container)
+        ai_cont_layout.setContentsMargins(0, 0, 0, 0)
+
+        ai_hdr_layout = QHBoxLayout()
+        lbl_ai_hdr = QLabel("Vista Previa Procesada por IA (800x800)")
+        lbl_ai_hdr.setStyleSheet("font-weight: bold; color: #a6e3a1; padding-bottom: 2px;")
+        self.lbl_ai_status = QLabel("")
+        self.lbl_ai_status.setStyleSheet("color: #cdd6f4; font-size: 11px;")
+        ai_hdr_layout.addWidget(lbl_ai_hdr)
+        ai_hdr_layout.addStretch()
+        ai_hdr_layout.addWidget(self.lbl_ai_status)
+        ai_cont_layout.addLayout(ai_hdr_layout)
+
+        self.canvas_ai_preview = PhotoEditorAIPreviewCanvas(self)
+        self.canvas_ai_preview.setStyleSheet(
+            f"background-color: #11111b; border: 1px solid {COLOR_BORDER};"
+        )
+        self.canvas_ai_preview.setSizePolicy(
+            QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Ignored
+        )
+        ai_cont_layout.addWidget(self.canvas_ai_preview, stretch=1)
+        self.canvas_splitter.addWidget(self.canvas_ai_container)
+
+        right_layout.addWidget(self.canvas_splitter, stretch=1)
+
+        # Inicializar modo de vista ("editor" por defecto)
+        self._set_view_mode("editor")
 
         splitter.addWidget(right_widget)
         splitter.setSizes([350, 700])
@@ -537,6 +760,74 @@ class PhotoEditorTab(QWidget):
 
         self._habilitar_controles(False)
 
+    # ----------------------------------------------------------------
+    # Gestión de Vista Previa IA
+    # ----------------------------------------------------------------
+
+    def _set_view_mode(self, mode: str) -> None:
+        """Cambia el modo de vista (editor, preview)."""
+        self.view_mode = mode
+        self._update_view_buttons()
+
+        if mode == "editor":
+            self.canvas_editor_container.show()
+            self.canvas_ai_container.hide()
+        elif mode == "preview":
+            self.canvas_editor_container.hide()
+            self.canvas_ai_container.show()
+            if self.img_pil_actual and self.ai_pil_preview is None:
+                self._trigger_ai_preview()
+
+    def _update_view_buttons(self) -> None:
+        """Actualiza el estilo visual de los botones de modo de vista."""
+        style_active = f"background-color: {COLOR_ACCENT}; color: {COLOR_BG_PRIMARY}; font-weight: bold;"
+        style_inactive = f"background-color: {COLOR_BTN_SECONDARY_BG}; color: {COLOR_TEXT_PRIMARY};"
+
+        self.btn_view_editor.setStyleSheet(
+            style_active if self.view_mode == "editor" else style_inactive
+        )
+        self.btn_view_ai.setStyleSheet(
+            style_active if self.view_mode == "preview" else style_inactive
+        )
+
+    def _trigger_ai_preview(self) -> None:
+        """Inicia el procesamiento asíncrono para generar la vista previa por IA de la foto actual."""
+        if not self.img_pil_actual:
+            self.canvas_ai_preview.set_image(
+                None, "Selecciona una foto para ver la vista previa IA"
+            )
+            self.lbl_ai_status.setText("")
+            return
+
+        if self._ai_worker and self._ai_worker.isRunning():
+            self._ai_worker.cancel()
+            self._ai_worker.wait()
+
+        self.canvas_ai_preview.set_loading("Procesando con IA...")
+        self.lbl_ai_status.setText("Procesando con IA...")
+
+        self._ai_worker = AIPreviewWorker(
+            img_pil=self.img_pil_actual,
+            modo=self.resize_mode,
+            fondo=self.resize_fill,
+            rembg=self.resize_rembg,
+            session=self._rembg_session,
+        )
+        self._ai_worker.preview_ready.connect(self._on_ai_preview_ready)
+        self._ai_worker.preview_error.connect(self._on_ai_preview_error)
+        self._ai_worker.start()
+
+    def _on_ai_preview_ready(self, pil_img: Image.Image, status_info: str) -> None:
+        """Slot: la vista previa por IA se generó exitosamente."""
+        self.ai_pil_preview = pil_img
+        self.canvas_ai_preview.set_image(pil_img, "")
+        self.lbl_ai_status.setText(status_info)
+
+    def _on_ai_preview_error(self, err_msg: str) -> None:
+        """Slot: error durante la generación de vista previa por IA."""
+        self.canvas_ai_preview.set_image(None, f"Error en IA: {err_msg}")
+        self.lbl_ai_status.setText("Error en procesamiento")
+
     def _bind_shortcuts(self) -> None:
         """Configura atajos de teclado."""
         QShortcut(QKeySequence(Qt.Key.Key_Right), self, lambda: self._navegar_lista(1))
@@ -546,7 +837,7 @@ class PhotoEditorTab(QWidget):
         QShortcut(QKeySequence("Ctrl+Z"), self, self._undo)
 
     def _habilitar_controles(self, estado: bool) -> None:
-        """Habilita o deshabilita controles de edición."""
+        """Habilita o deshabilita controles de edición y vista previa."""
         widgets = [
             self.btn_rotar_izq,
             self.btn_rotar_der,
@@ -555,6 +846,8 @@ class PhotoEditorTab(QWidget):
             self.btn_varita,
             self.slider_tolerance,
             self.btn_eliminar,
+            self.btn_view_editor,
+            self.btn_view_ai,
         ]
         for w in widgets:
             w.setEnabled(estado)
@@ -592,6 +885,8 @@ class PhotoEditorTab(QWidget):
             self.resize_jpg = s["forzar_jpg"]
             self.resize_limit = s["optimizar"]
             self.resize_del = s["eliminar_orig"]
+            if self.img_pil_actual and self.view_mode == "preview":
+                self._trigger_ai_preview()
 
     def _load_folder(self) -> None:
         """Abre diálogo para seleccionar una carpeta de imágenes."""
@@ -639,7 +934,12 @@ class PhotoEditorTab(QWidget):
         self.tree.clear()
         self.indice_actual = -1
         self.img_pil_actual = None
+        self.ai_pil_preview = None
         self.canvas_imagen.clear()
+        self.canvas_ai_preview.set_image(
+            None, "Selecciona una foto para ver la vista previa IA"
+        )
+        self.lbl_ai_status.setText("")
         self.lbl_contador.setText("Fotos encontradas: 0")
         self._habilitar_controles(False)
 
@@ -679,10 +979,16 @@ class PhotoEditorTab(QWidget):
         self._desactivar_modo_recorte()
         self._desactivar_modo_varita()
 
+        self.ai_pil_preview = None
+        self.canvas_ai_preview.set_image(None, "Procesando con IA...")
+
         self.canvas_imagen.blockSignals(True)
         self._cargar_y_mostrar_imagen(ruta_completa)
         self.canvas_imagen.blockSignals(False)
         self._habilitar_controles(True)
+
+        if self.view_mode == "preview":
+            self._trigger_ai_preview()
 
     def _cargar_y_mostrar_imagen(self, ruta: str | None = None) -> None:
         """Carga y renderiza la imagen actual en el canvas."""
@@ -863,6 +1169,8 @@ class PhotoEditorTab(QWidget):
                     1,
                     f"{self.img_pil_actual.width} x {self.img_pil_actual.height}",
                 )
+            if self.view_mode == "preview":
+                self._trigger_ai_preview()
         except Exception as e:
             QMessageBox.critical(
                 self, "Error al guardar", f"No se pudo guardar la imagen: {e}"
