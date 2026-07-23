@@ -25,11 +25,9 @@ from PyQt6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QSpinBox,
-    QCheckBox,
     QTabWidget,
     QVBoxLayout,
     QWidget,
-    QFileDialog,
 )
 
 from services.sql_service import SqlService, SqlConnectionError
@@ -101,7 +99,6 @@ class SettingsDialog(QDialog):
     Organizado en pestañas:
     - SQL Server: servidor, base de datos, usuario, contraseña.
     - FTP: host, puerto, usuario, contraseña, ruta remota.
-    - General: ruta de imágenes, hilos máximos, timeout, reintentos.
 
     Lee y escribe el archivo config.ini con configparser.
 
@@ -152,9 +149,6 @@ class SettingsDialog(QDialog):
 
         # Pestaña FTP
         self._tabs.addTab(self._create_ftp_tab(), "FTP")
-
-        # Pestaña General
-        self._tabs.addTab(self._create_general_tab(), "General")
 
         # Botones de acción
         button_box = QDialogButtonBox()
@@ -269,55 +263,6 @@ class SettingsDialog(QDialog):
         layout.addStretch()
         return tab
 
-    def _create_general_tab(self) -> QWidget:
-        """Crea la pestaña de configuración general."""
-        tab = QWidget()
-        layout = QVBoxLayout(tab)
-        layout.setSpacing(12)
-
-        group = QGroupBox("Configuración General")
-        form = QFormLayout()
-        form.setSpacing(10)
-        form.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
-
-        # Ruta de imágenes con botón examinar
-        img_layout = QHBoxLayout()
-        self._image_folder = QLineEdit()
-        self._image_folder.setPlaceholderText("C:\\imagenes\\articulos")
-        img_layout.addWidget(self._image_folder)
-        btn_browse = QPushButton("Examinar")
-        btn_browse.clicked.connect(self._browse_image_folder)
-        img_layout.addWidget(btn_browse)
-        form.addRow("Carpeta imágenes:", img_layout)
-
-        # Hilos máximos
-        self._max_threads = QSpinBox()
-        self._max_threads.setRange(1, 20)
-        self._max_threads.setValue(4)
-        self._max_threads.setToolTip("Cantidad de hilos paralelos para subida FTP")
-        form.addRow("Hilos FTP:", self._max_threads)
-
-        # Timeout
-        self._timeout = QSpinBox()
-        self._timeout.setRange(5, 300)
-        self._timeout.setValue(30)
-        self._timeout.setSuffix(" seg")
-        form.addRow("Timeout:", self._timeout)
-
-        # Reintentos
-        self._max_retries = QSpinBox()
-        self._max_retries.setRange(1, 10)
-        self._max_retries.setValue(3)
-        form.addRow("Reintentos:", self._max_retries)
-
-        # Convertir PNG
-        self._convert_png = QCheckBox("Convertir imágenes PNG a JPG automáticamente")
-        form.addRow("", self._convert_png)
-
-        group.setLayout(form)
-        layout.addWidget(group)
-
-        layout.addStretch()
         return tab
 
     # ================================================================
@@ -360,23 +305,6 @@ class SettingsDialog(QDialog):
                 self._config.get("FTP", "remote_path", fallback="/")
             )
 
-            # General
-            self._image_folder.setText(
-                self._config.get("General", "image_folder", fallback="")
-            )
-            self._max_threads.setValue(
-                self._config.getint("General", "max_threads", fallback=4)
-            )
-            self._timeout.setValue(
-                self._config.getint("General", "timeout", fallback=30)
-            )
-            self._max_retries.setValue(
-                self._config.getint("General", "max_retries", fallback=3)
-            )
-            self._convert_png.setChecked(
-                self._config.getboolean("General", "convert_png", fallback=True)
-            )
-
             logger.debug(f"Configuración cargada desde: {self._config_path}")
 
         except Exception as e:
@@ -407,16 +335,6 @@ class SettingsDialog(QDialog):
             self._config.set("FTP", "username", self._ftp_username.text().strip())
             self._config.set("FTP", "password", self._ftp_password.text())
             self._config.set("FTP", "remote_path", self._ftp_remote_path.text().strip())
-
-            # General
-            self._config.set("General", "image_folder", self._image_folder.text().strip())
-            self._config.set("General", "max_threads", str(self._max_threads.value()))
-            self._config.set("General", "timeout", str(self._timeout.value()))
-            self._config.set("General", "max_retries", str(self._max_retries.value()))
-            self._config.set(
-                "General", "convert_png",
-                str(self._convert_png.isChecked()).lower()
-            )
 
             with open(self._config_path, "w", encoding="utf-8") as f:
                 self._config.write(f)
@@ -482,7 +400,7 @@ class SettingsDialog(QDialog):
             "username": self._ftp_username.text().strip(),
             "password": self._ftp_password.text(),
             "remote_path": self._ftp_remote_path.text().strip(),
-            "timeout": self._timeout.value(),
+            "timeout": self._config.getint("General", "timeout", fallback=30),
         }
 
         self._tester = _ConnectionTester("ftp", params, self)
@@ -502,17 +420,6 @@ class SettingsDialog(QDialog):
     # ================================================================
     # Utilidades
     # ================================================================
-
-    def _browse_image_folder(self) -> None:
-        """Abre un diálogo para seleccionar la carpeta de imágenes."""
-        current = self._image_folder.text().strip()
-        folder = QFileDialog.getExistingDirectory(
-            self,
-            "Seleccionar carpeta de imágenes",
-            current if current else str(Path.home()),
-        )
-        if folder:
-            self._image_folder.setText(folder)
 
     def get_config(self) -> configparser.ConfigParser:
         """

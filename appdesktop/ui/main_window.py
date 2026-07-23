@@ -256,20 +256,6 @@ class MainWindow(QMainWindow):
         img_row.addWidget(self._btn_browse_folder)
         layout.addLayout(img_row)
 
-        # Archivo Excel
-        excel_row = QHBoxLayout()
-        excel_row.addWidget(QLabel("Archivo Excel (opcional):"))
-        self._txt_excel_file = QLineEdit()
-        self._txt_excel_file.setPlaceholderText(
-            "Seleccione un archivo Excel con datos de artículos..."
-        )
-        self._txt_excel_file.setReadOnly(True)
-        excel_row.addWidget(self._txt_excel_file, 1)
-        self._btn_browse_excel = QPushButton("Examinar")
-        self._btn_browse_excel.clicked.connect(self._on_browse_excel)
-        excel_row.addWidget(self._btn_browse_excel)
-        layout.addLayout(excel_row)
-
         group.setLayout(layout)
         return group
 
@@ -476,19 +462,6 @@ class MainWindow(QMainWindow):
             self._txt_image_folder.setText(folder)
             self._log(f"Carpeta de imágenes seleccionada: {folder}")
 
-    def _on_browse_excel(self) -> None:
-        """Abre diálogo para seleccionar archivo Excel."""
-        current_dir = self._txt_image_folder.text().strip() or str(Path.home())
-        file_path, _ = QFileDialog.getOpenFileName(
-            self,
-            "Seleccionar archivo Excel",
-            current_dir,
-            "Archivos Excel (*.xlsx *.xls)",
-        )
-        if file_path:
-            self._txt_excel_file.setText(file_path)
-            self._log(f"Archivo Excel seleccionado: {file_path}")
-
     def _on_connect(self) -> None:
         """Establece conexiones con SQL Server y FTP."""
         self._reload_config()
@@ -607,19 +580,6 @@ class MainWindow(QMainWindow):
 
             # Escanear artículos
             self._articles = self._image_service.scan_articles()
-
-            # Cargar Excel si está seleccionado
-            excel_path_str = self._txt_excel_file.text().strip()
-            if excel_path_str:
-                excel_path = Path(excel_path_str)
-                self._excel_service = ExcelService(excel_path)
-                if self._excel_service.load():
-                    self._excel_service.merge_with_scanned(self._articles)
-                    self._log(
-                        f"Excel cargado: {self._excel_service.article_count} artículos."
-                    )
-                else:
-                    self._log("⚠ No se pudo cargar el archivo Excel.")
 
             # Actualizar tabla
             self._populate_table()
