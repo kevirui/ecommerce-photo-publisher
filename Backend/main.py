@@ -348,6 +348,19 @@ async def confirm_upload(
     image_index: int = Form(0),
 ):
     """Confirma la subida de un preview ya procesado: sube a FTP y actualiza BD."""
+    # Validación de existencia en Base de Datos
+    from services.database import SqlService
+    sql = SqlService(SQL_SERVER, SQL_DB, SQL_USER, SQL_PASS)
+    try:
+        sql.connect()
+        results = sql.execute("SELECT * FROM ARTICULOS WHERE COD_ARTICULO = ?", (article_code,))
+        if not results:
+            return JSONResponse(status_code=404, content={"error": f"El artículo '{article_code}' no existe en la base de datos."})
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": f"Error de Base de Datos (Validación): {e}"})
+    finally:
+        sql.disconnect()
+
     # Obtener info del preview
     with _preview_lock:
         info = _preview_store.get(preview_id)

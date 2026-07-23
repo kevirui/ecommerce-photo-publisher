@@ -103,19 +103,14 @@ class AuditTab(QWidget):
         layout_actions = QHBoxLayout(group_actions)
         layout_actions.setSpacing(12)
 
-        self._btn_audit_sql = QPushButton("Auditar SQL")
+        self._btn_audit_sql = QPushButton("Auditar Solo BD (SQL)")
         self._btn_audit_sql.setToolTip("Analizar artículos en SQL Server sin verificar archivos en FTP.")
         self._btn_audit_sql.clicked.connect(lambda: self._start_audit("sql"))
         layout_actions.addWidget(self._btn_audit_sql)
 
-        self._btn_audit_ftp = QPushButton("Auditar FTP")
-        self._btn_audit_ftp.setToolTip("Descargar listado FTP y buscar archivos huérfanos sin datos de publicación.")
-        self._btn_audit_ftp.clicked.connect(lambda: self._start_audit("ftp"))
-        layout_actions.addWidget(self._btn_audit_ftp)
-
-        self._btn_audit_all = QPushButton("Auditar Todo")
+        self._btn_audit_all = QPushButton("Auditar BD + FTP")
         self._btn_audit_all.setProperty("primary", True)
-        self._btn_audit_all.setToolTip("Analizar consistencia completa (SQL + FTP + Huérfanos + Advertencias).")
+        self._btn_audit_all.setToolTip("Analizar artículos en SQL Server y verificar la existencia de sus imágenes en FTP.")
         self._btn_audit_all.clicked.connect(lambda: self._start_audit("all"))
         layout_actions.addWidget(self._btn_audit_all)
 
@@ -156,7 +151,6 @@ class AuditTab(QWidget):
             "Pendientes",
             "Sin Imagen Principal",
             "Imagen FTP Faltante",
-            "Imagen Huérfana",
             "Advertencias",
         ]
         for opt in filter_options:
@@ -207,14 +201,12 @@ class AuditTab(QWidget):
         self._lbl_pendientes = QLabel("Pendientes: 0")
         self._lbl_errores = QLabel("Errores: 0")
         self._lbl_advertencias = QLabel("Advertencias: 0")
-        self._lbl_huerfanos = QLabel("Huérfanos: 0")
 
         grid_summary.addWidget(self._lbl_total, 0, 0)
         grid_summary.addWidget(self._lbl_correctos, 0, 1)
         grid_summary.addWidget(self._lbl_pendientes, 0, 2)
         grid_summary.addWidget(self._lbl_errores, 0, 3)
         grid_summary.addWidget(self._lbl_advertencias, 0, 4)
-        grid_summary.addWidget(self._lbl_huerfanos, 0, 5)
 
         main_layout.addWidget(self._group_summary)
 
@@ -270,17 +262,23 @@ class AuditTab(QWidget):
             QMessageBox.warning(self, "Sin Conexión SQL", "Se requiere conexión activa a SQL Server para este análisis. Conéctese en la pestaña principal.")
             return
 
-        # Validar conexión de FTP para análisis FTP / ALL
-        if mode in ("ftp", "all") and (not self._ftp_service or not self._ftp_service.is_connected):
+    def _start_audit(self, mode: str) -> None:
+        """Inicia el proceso de auditoría en segundo plano."""
+        # Validar conexión de base de datos para análisis SQL / ALL
+        if mode in ("sql", "all") and (not self._sql_service or not self._sql_service.is_connected):
+            QMessageBox.warning(self, "Sin Conexión SQL", "Se requiere conexión activa a SQL Server para este análisis. Conéctese en la pestaña principal.")
+            return
+
+        # Validar conexión de FTP para análisis BD + FTP
+        if mode == "all" and (not self._ftp_service or not self._ftp_service.is_connected):
             QMessageBox.warning(self, "Sin Conexión FTP", "Se requiere conexión activa al servidor FTP para este análisis. Conéctese en la pestaña principal.")
             return
 
         self._all_audit_items.clear()
         self._table.setRowCount(0)
-        self._update_summary_ui({"total": 0, "correctos": 0, "pendientes": 0, "errores": 0, "advertencias": 0, "huerfanos": 0})
+        self._update_summary_ui({"total": 0, "correctos": 0, "pendientes": 0, "errores": 0, "advertencias": 0})
 
         self._btn_audit_sql.setEnabled(False)
-        self._btn_audit_ftp.setEnabled(False)
         self._btn_audit_all.setEnabled(False)
         self._btn_export.setEnabled(False)
         self._btn_cancel.setEnabled(True)
@@ -324,7 +322,6 @@ class AuditTab(QWidget):
     def _cleanup_worker(self) -> None:
         """Restaura los botones e inactiva el worker."""
         self._btn_audit_sql.setEnabled(True)
-        self._btn_audit_ftp.setEnabled(True)
         self._btn_audit_all.setEnabled(True)
         self._btn_export.setEnabled(True)
         self._btn_cancel.setEnabled(False)
@@ -379,8 +376,6 @@ class AuditTab(QWidget):
                 continue
             elif self._current_filter == "Imagen FTP Faltante" and not (state == "ERROR" and item.get("existe_ftp") == "No"):
                 continue
-            elif self._current_filter == "Imagen Huérfana" and state != "HUÉRFANA":
-                continue
             elif self._current_filter == "Advertencias" and state != "ADVERTENCIA":
                 continue
 
@@ -403,7 +398,6 @@ class AuditTab(QWidget):
             "ERROR": (QColor(COLOR_ERROR), QColor(COLOR_ERROR_BG)),
             "ADVERTENCIA": (QColor(COLOR_WARNING), QColor(COLOR_WARNING_BG)),
             "PENDIENTE": (QColor(COLOR_TEXT_MUTED), QColor(COLOR_BG_SECONDARY)),
-            "HUÉRFANA": (QColor("#b0bec5"), QColor("#37474f")), # Gris oscuro y texto claro
         }
 
         for row_idx, item in enumerate(self._filtered_audit_items):
@@ -455,7 +449,3 @@ class AuditTab(QWidget):
         advertencias = stats.get("advertencias", 0)
         self._lbl_advertencias.setText(f"Advertencias: {advertencias}")
         self._lbl_advertencias.setStyleSheet(f"color: {COLOR_WARNING}; font-weight: bold;" if advertencias else "")
-
-        huerfanos = stats.get("huerfanos", 0)
-        self._lbl_huerfanos.setText(f"Huérfanos: {huerfanos}")
-        self._lbl_huerfanos.setStyleSheet("color: #b0bec5; font-weight: bold;" if huerfanos else "")

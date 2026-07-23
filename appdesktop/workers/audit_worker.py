@@ -75,11 +75,6 @@ class AuditWorker(QThread):
             
             # Registrar estadísticas en el log de la pestaña
             self.log_message.emit(f"Cantidad de artículos analizados: {stats.get('total', 0)}")
-            
-            # Calcular imágenes en FTP a partir de los datos analizados
-            # En modo ALL o FTP, podemos contar cuántos no son huérfanos + huérfanos
-            # Pero para ser más directos, informamos de los huérfanos encontrados
-            self.log_message.emit(f"Cantidad de imágenes huérfanas: {stats.get('huerfanos', 0)}")
             self.log_message.emit(f"Fin auditoría. Tiempo total: {elapsed:.2f}s")
             
             self.finished_audit.emit(results, stats)

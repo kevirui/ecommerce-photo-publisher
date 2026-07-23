@@ -65,9 +65,9 @@ class AuditService:
         additional_images_by_code: Dict[str, List[str]] = {}
         all_db_codes: Set[str] = set()
 
-        # 1. Obtener listado FTP si corresponde (modos 'ftp' o 'all')
-        if mode in ("ftp", "all"):
-            if self._ftp_service.is_connected:
+        # 1. Obtener listado FTP si corresponde (modo 'all')
+        if mode == "all":
+            if self._ftp_service and self._ftp_service.is_connected:
                 logger.info("Obteniendo listado de archivos del FTP...")
                 ftp_files = self._ftp_service.list_remote_files()
                 # Pasar todo a mayúsculas para comparación case-insensitive segura
@@ -76,52 +76,48 @@ class AuditService:
             else:
                 logger.warning("FTP no conectado. Saltando validaciones de FTP.")
 
-        # 2. Consultar Base de Datos si corresponde (modos 'sql' o 'all')
-        if mode in ("sql", "all"):
-            logger.info("Consultando artículos de la base de datos...")
-            
-            # Traer artículos con count de adicionales
-            query_articles = """
-            SELECT
-                A.COD_ARTICULO,
-                A.DESCRIP_ARTI,
-                A.WEB_PUBLI,
-                A.WEB_LINK,
-                A.WEB_IMAGEN_PROVE,
-                COUNT(I.COD_ARTICULO) AS IMAGENES
-            FROM ARTICULOS A
-            LEFT JOIN ARTICULOS_IMAGENES I
-                ON A.COD_ARTICULO = I.COD_ARTICULO
-            GROUP BY
-                A.COD_ARTICULO,
-                A.DESCRIP_ARTI,
-                A.WEB_PUBLI,
-                A.WEB_LINK,
-                A.WEB_IMAGEN_PROVE
-            """
-            
-            db_articles = self._sql_service.execute(query_articles)
-            
-            # Consultar los nombres de imágenes adicionales específicas registradas
-            logger.info("Consultando detalles de imágenes adicionales de la base de datos...")
-            query_adicionales = "SELECT COD_ARTICULO, IMAGEN FROM ARTICULOS_IMAGENES"
-            adicionales_res = self._sql_service.execute(query_adicionales)
-            
-            for row in adicionales_res:
-                cod = str(row.get("COD_ARTICULO", "")).strip().upper()
-                img_raw = str(row.get("IMAGEN", "")).strip()
-                # La columna IMAGEN almacena URLs completas; extraer solo el nombre del archivo
-                if "/" in img_raw:
-                    img = img_raw.rsplit("/", 1)[-1].upper()
-                else:
-                    img = img_raw.upper()
-                if cod and img:
-                    if cod not in additional_images_by_code:
-                        additional_images_by_code[cod] = []
-                    additional_images_by_code[cod].append(img)
-
-            # Obtener conjunto de códigos de artículos en BD para detección de huérfanos
-            all_db_codes = {str(row.get("COD_ARTICULO", "")).strip().upper() for row in db_articles}
+        # 2. Consultar Base de Datos
+        logger.info("Consultando artículos de la base de datos...")
+        
+        # Traer artículos con count de adicionales
+        query_articles = """
+        SELECT
+            A.COD_ARTICULO,
+            A.DESCRIP_ARTI,
+            A.WEB_PUBLI,
+            A.WEB_LINK,
+            A.WEB_IMAGEN_PROVE,
+            COUNT(I.COD_ARTICULO) AS IMAGENES
+        FROM ARTICULOS A
+        LEFT JOIN ARTICULOS_IMAGENES I
+            ON A.COD_ARTICULO = I.COD_ARTICULO
+        GROUP BY
+            A.COD_ARTICULO,
+            A.DESCRIP_ARTI,
+            A.WEB_PUBLI,
+            A.WEB_LINK,
+            A.WEB_IMAGEN_PROVE
+        """
+        
+        db_articles = self._sql_service.execute(query_articles)
+        
+        # Consultar los nombres de imágenes adicionales específicas registradas
+        logger.info("Consultando detalles de imágenes adicionales de la base de datos...")
+        query_adicionales = "SELECT COD_ARTICULO, IMAGEN FROM ARTICULOS_IMAGENES"
+        adicionales_res = self._sql_service.execute(query_adicionales)
+        
+        for row in adicionales_res:
+            cod = str(row.get("COD_ARTICULO", "")).strip().upper()
+            img_raw = str(row.get("IMAGEN", "")).strip()
+            # La columna IMAGEN almacena URLs completas; extraer solo el nombre del archivo
+            if "/" in img_raw:
+                img = img_raw.rsplit("/", 1)[-1].upper()
+            else:
+                img = img_raw.upper()
+            if cod and img:
+                if cod not in additional_images_by_code:
+                    additional_images_by_code[cod] = []
+                additional_images_by_code[cod].append(img)
 
         # 3. Procesar Auditoría por Artículos
         total_items = len(db_articles)
@@ -219,41 +215,6 @@ class AuditService:
             if progress_callback and (i % max(1, total_items // 50) == 0 or i == total_items - 1):
                 progress_callback(i + 1, total_items)
 
-        # 4. Procesar Imágenes Huérfanas (solo modos 'ftp' y 'all')
-        orphan_count = 0
-        if mode in ("ftp", "all") and ftp_files:
-            # Si sólo auditamos FTP, creamos el set de códigos a partir de una consulta simple de BD
-            if mode == "ftp":
-                logger.info("Obteniendo códigos de artículos de la base de datos para auditoría de huérfanos...")
-                try:
-                    db_codes_res = self._sql_service.execute("SELECT COD_ARTICULO FROM ARTICULOS")
-                    all_db_codes = {str(row.get("COD_ARTICULO", "")).strip().upper() for row in db_codes_res}
-                except Exception as e:
-                    logger.error(f"Error cargando códigos para huérfanos: {e}")
-            
-            # Validar archivos FTP contra el set de códigos
-            logger.info("Buscando imágenes huérfanas en el listado FTP...")
-            for f in ftp_files:
-                # Ignorar carpetas o archivos que no sean imágenes típicas
-                if not f.endswith((".JPG", ".JPEG", ".PNG", ".GIF", ".WEBP")):
-                    continue
-
-                base_code = extract_base_code(f)
-                if base_code not in all_db_codes:
-                    # Es una imagen huérfana
-                    results.append({
-                        "codigo": f,  # Mostrar nombre del archivo como código
-                        "descripcion": "Archivo huérfano en FTP",
-                        "publicado": "",
-                        "imagen_principal": "",
-                        "existe_ftp": "Sí",
-                        "cant_adicionales": 0,
-                        "estado": "HUÉRFANA",
-                        "observaciones": f"El archivo existe en FTP pero no está registrado en ningún artículo (Código base: {base_code}).",
-                        "web_link": ""
-                    })
-                    orphan_count += 1
-
         # Generar estadísticas finales
         stats = self._compute_stats(results, mode)
         return results, stats
@@ -265,7 +226,6 @@ class AuditService:
         pendientes = sum(1 for item in results if item.get("estado") == "PENDIENTE")
         errores = sum(1 for item in results if item.get("estado") == "ERROR")
         advertencias = sum(1 for item in results if item.get("estado") == "ADVERTENCIA")
-        huerfanos = sum(1 for item in results if item.get("estado") == "HUÉRFANA")
 
         return {
             "total": total,
@@ -273,7 +233,7 @@ class AuditService:
             "pendientes": pendientes,
             "errores": errores,
             "advertencias": advertencias,
-            "huerfanos": huerfanos,
+            "huerfanos": 0,
             "mode": mode
         }
 
