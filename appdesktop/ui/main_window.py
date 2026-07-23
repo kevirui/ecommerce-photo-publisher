@@ -923,7 +923,6 @@ class MainWindow(QMainWindow):
         self._btn_cancel.setEnabled(publishing)
         self._btn_settings.setEnabled(not publishing)
         self._btn_browse_folder.setEnabled(not publishing)
-        self._btn_browse_excel.setEnabled(not publishing)
         self._chk_simulation.setEnabled(not publishing)
         self._cmb_batch.setEnabled(not publishing)
         self._radio_overwrite.setEnabled(not publishing)
