@@ -152,6 +152,8 @@ class PhotoRenamerTab(QWidget):
         # Grupo de renombrado
         group_rename = QGroupBox("Opciones de Renombrado")
         rename_form = QFormLayout(group_rename)
+        self.chk_secuencial = QCheckBox("Modo secuencial (auto-completar nombre sin sufijo '-N')")
+        self.chk_secuencial.setToolTip("Al seleccionar una foto con sufijo como '-1' o '-2', sugiere el código base sin el sufijo.")
         self.txt_nuevo_nombre = QLineEdit()
         self.txt_nuevo_nombre.returnPressed.connect(self._renombrar_foto)
         self.btn_renombrar = QPushButton("Renombrar (Enter)")
@@ -161,6 +163,7 @@ class PhotoRenamerTab(QWidget):
         self.btn_renombrar.clicked.connect(self._renombrar_foto)
 
         rename_form.addRow("Nuevo nombre:", self.txt_nuevo_nombre)
+        rename_form.addRow("", self.chk_secuencial)
         rename_form.addRow("", self.btn_renombrar)
         bottom_config_layout.addWidget(group_rename, stretch=1)
 
@@ -180,6 +183,7 @@ class PhotoRenamerTab(QWidget):
             self.btn_eliminar,
             self.btn_renombrar,
             self.txt_nuevo_nombre,
+            self.chk_secuencial,
         ]
         for w in widgets:
             w.setEnabled(estado)
