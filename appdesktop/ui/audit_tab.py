@@ -163,14 +163,11 @@ class AuditTab(QWidget):
 
         # ----------------- TABLA DE RESULTADOS -----------------
         self._table = QTableWidget()
-        self._table.setColumnCount(8)
+        self._table.setColumnCount(5)
         self._table.setHorizontalHeaderLabels([
             "Código",
             "Descripción",
             "Publicado",
-            "Imagen Principal",
-            "Existe en FTP",
-            "Cant. Adicionales",
             "Estado",
             "Observaciones",
         ])
@@ -183,11 +180,8 @@ class AuditTab(QWidget):
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
-        header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(6, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(7, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
 
         main_layout.addWidget(self._table, 3)
 
@@ -408,27 +402,22 @@ class AuditTab(QWidget):
             item_code = QTableWidgetItem(item.get("codigo", ""))
             item_desc = QTableWidgetItem(item.get("descripcion", ""))
             item_pub = QTableWidgetItem("Sí" if item.get("publicado") == "S" else "No" if item.get("publicado") == "N" else "")
-            item_main_img = QTableWidgetItem(item.get("imagen_principal", ""))
-            item_ftp = QTableWidgetItem(item.get("existe_ftp", ""))
-            item_qty = QTableWidgetItem(str(item.get("cant_adicionales", 0)))
             item_state = QTableWidgetItem(state)
             item_obs = QTableWidgetItem(item.get("observaciones", ""))
 
             # Alineaciones
             item_pub.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            item_ftp.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            item_qty.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             item_state.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
 
             # Estilo
             font_bold = QFont("Segoe UI", 9, QFont.Weight.Bold)
             item_state.setFont(font_bold)
 
-            row_items = [item_code, item_desc, item_pub, item_main_img, item_ftp, item_qty, item_state, item_obs]
-            for it in row_items:
+            row_items = [item_code, item_desc, item_pub, item_state, item_obs]
+            for col_idx, it in enumerate(row_items):
                 it.setForeground(txt_color)
                 it.setBackground(bg_color)
-                self._table.setItem(row_idx, row_items.index(it), it)
+                self._table.setItem(row_idx, col_idx, it)
 
     def _update_summary_ui(self, stats: Dict[str, Any]) -> None:
         """Actualiza los contadores de la sección de estadísticas."""

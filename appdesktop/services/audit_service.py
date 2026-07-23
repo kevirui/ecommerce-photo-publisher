@@ -250,9 +250,6 @@ class AuditService:
             "Código",
             "Descripción",
             "Publicado",
-            "Imagen Principal",
-            "Existe FTP",
-            "Cantidad Imágenes",
             "Estado",
             "Observaciones"
         ]
@@ -263,9 +260,6 @@ class AuditService:
                 item.get("codigo", ""),
                 item.get("descripcion", ""),
                 item.get("publicado", ""),
-                item.get("imagen_principal", ""),
-                item.get("existe_ftp", ""),
-                item.get("cant_adicionales", 0),
                 item.get("estado", ""),
                 item.get("observaciones", "")
             ])
