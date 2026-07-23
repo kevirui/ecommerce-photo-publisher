@@ -79,7 +79,7 @@ class AuditService:
         # 2. Consultar Base de Datos
         logger.info("Consultando artículos de la base de datos...")
         
-        # Traer artículos con count de adicionales y agrupaciones (rubro, grupo, subgrupo)
+        # Traer artículos con count de adicionales y agrupaciones (rubro, grupo, subgrupo) que tengan al menos 1 de stock
         query_articles = """
         SELECT
             A.COD_ARTICULO,
@@ -87,6 +87,7 @@ class AuditService:
             A.WEB_PUBLI,
             A.WEB_LINK,
             A.WEB_IMAGEN_PROVE,
+            A.CANT_STOCK,
             G1.DESCRIP_AGRU AS RUBRO,
             G2.DESCRIP_AGRU AS GRUPO,
             G3.DESCRIP_AGRU AS SUBGRUPO,
@@ -97,12 +98,14 @@ class AuditService:
         LEFT JOIN AGRUPACIONES G1 ON A.AGRU_1 = G1.CODI_AGRU AND G1.NUM_AGRU = 1
         LEFT JOIN AGRUPACIONES G2 ON A.AGRU_2 = G2.CODI_AGRU AND G2.NUM_AGRU = 2
         LEFT JOIN AGRUPACIONES G3 ON A.AGRU_3 = G3.CODI_AGRU AND G3.NUM_AGRU = 3
+        WHERE ISNULL(A.CANT_STOCK, 0) >= 1
         GROUP BY
             A.COD_ARTICULO,
             A.DESCRIP_ARTI,
             A.WEB_PUBLI,
             A.WEB_LINK,
             A.WEB_IMAGEN_PROVE,
+            A.CANT_STOCK,
             G1.DESCRIP_AGRU,
             G2.DESCRIP_AGRU,
             G3.DESCRIP_AGRU
@@ -213,6 +216,7 @@ class AuditService:
             results.append({
                 "codigo": code,
                 "descripcion": descrip if descrip else "",
+                "cant_stock": float(art.get("CANT_STOCK", 0.0) or 0.0),
                 "publicado": web_publi if web_publi else "N",
                 "imagen_principal": web_img,
                 "existe_ftp": main_img_status_text,

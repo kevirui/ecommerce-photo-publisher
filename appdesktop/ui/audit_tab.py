@@ -280,13 +280,6 @@ class AuditTab(QWidget):
             QMessageBox.warning(self, "Sin Conexión SQL", "Se requiere conexión activa a SQL Server para este análisis. Conéctese en la pestaña principal.")
             return
 
-    def _start_audit(self, mode: str) -> None:
-        """Inicia el proceso de auditoría en segundo plano."""
-        # Validar conexión de base de datos para análisis SQL / ALL
-        if mode in ("sql", "all") and (not self._sql_service or not self._sql_service.is_connected):
-            QMessageBox.warning(self, "Sin Conexión SQL", "Se requiere conexión activa a SQL Server para este análisis. Conéctese en la pestaña principal.")
-            return
-
         # Validar conexión de FTP para análisis BD + FTP
         if mode == "all" and (not self._ftp_service or not self._ftp_service.is_connected):
             QMessageBox.warning(self, "Sin Conexión FTP", "Se requiere conexión activa al servidor FTP para este análisis. Conéctese en la pestaña principal.")
