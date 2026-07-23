@@ -20,7 +20,6 @@ from PyQt6.QtWidgets import (
     QFileDialog,
     QCheckBox,
     QLineEdit,
-    QGroupBox,
     QProgressBar,
     QMessageBox,
     QSizePolicy,
@@ -32,8 +31,10 @@ from PyQt6.QtWidgets import (
     QTreeWidgetItem,
     QFormLayout,
     QSlider,
+    QDialog,
+    QDialogButtonBox,
 )
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QSize
 from PyQt6.QtGui import (
     QPixmap,
     QImage,
@@ -42,6 +43,7 @@ from PyQt6.QtGui import (
     QKeySequence,
     QShortcut,
     QColor,
+    QIcon,
 )
 
 from ui.styles import (
@@ -84,6 +86,118 @@ def pil_to_pixmap(pil_img: Image.Image) -> QPixmap:
 
     qim = QImage(data, pil_img.width, pil_img.height, bytes_per_line, fmt)
     return QPixmap.fromImage(qim.copy())
+
+
+# ============================================================
+# Diálogo de ajustes de reescalado
+# ============================================================
+
+
+class ResizeSettingsDialog(QDialog):
+    """Diálogo modal para configurar el reescalado y optimización de imágenes (800x800)."""
+
+    def __init__(
+        self,
+        parent,
+        modo: str = "fit",
+        fondo: str = "Blanco",
+        rembg: bool = True,
+        forzar_jpg: bool = True,
+        optimizar: bool = True,
+        eliminar_orig: bool = False,
+    ) -> None:
+        super().__init__(parent)
+        self.setWindowTitle("Configuración de Reescalado 800x800")
+        self.setMinimumWidth(360)
+
+        layout = QFormLayout(self)
+
+        mode_layout = QHBoxLayout()
+        self.rb_fit = QRadioButton("Ajustar")
+        self.rb_crop = QRadioButton("Recortar")
+        self.rb_stretch = QRadioButton("Estirar")
+        self.bg_mode = QButtonGroup(self)
+        self.bg_mode.addButton(self.rb_fit)
+        self.bg_mode.addButton(self.rb_crop)
+        self.bg_mode.addButton(self.rb_stretch)
+
+        if modo == "crop":
+            self.rb_crop.setChecked(True)
+        elif modo == "stretch":
+            self.rb_stretch.setChecked(True)
+        else:
+            self.rb_fit.setChecked(True)
+
+        mode_layout.addWidget(self.rb_fit)
+        mode_layout.addWidget(self.rb_crop)
+        mode_layout.addWidget(self.rb_stretch)
+        layout.addRow("Método:", mode_layout)
+
+        self.cb_color = QComboBox()
+        self.cb_color.addItems(["Blanco", "Negro", "Gris", "Transparente"])
+        self.cb_color.setCurrentText(fondo)
+        layout.addRow("Fondo:", self.cb_color)
+
+        self.chk_rembg = QCheckBox()
+        self.chk_rembg.setChecked(rembg)
+        layout.addRow("Remover Fondo (IA):", self.chk_rembg)
+
+        self.chk_jpg = QCheckBox()
+        self.chk_jpg.setChecked(forzar_jpg)
+        layout.addRow("Forzar .JPG:", self.chk_jpg)
+
+        self.chk_limit = QCheckBox()
+        self.chk_limit.setChecked(optimizar)
+        layout.addRow("Optimizar (<1MB):", self.chk_limit)
+
+        self.chk_del = QCheckBox()
+        self.chk_del.setChecked(eliminar_orig)
+        layout.addRow("Eliminar orig.:", self.chk_del)
+
+        btns = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok
+            | QDialogButtonBox.StandardButton.Cancel
+        )
+        btns.accepted.connect(self.accept)
+        btns.rejected.connect(self.reject)
+        layout.addRow(btns)
+
+    def get_settings(self) -> dict:
+        """Devuelve un diccionario con las opciones configuradas."""
+        modo = "fit"
+        if self.rb_crop.isChecked():
+            modo = "crop"
+        elif self.rb_stretch.isChecked():
+            modo = "stretch"
+
+        return {
+            "modo": modo,
+            "fondo": self.cb_color.currentText(),
+            "rembg": self.chk_rembg.isChecked(),
+            "forzar_jpg": self.chk_jpg.isChecked(),
+            "optimizar": self.chk_limit.isChecked(),
+            "eliminar_orig": self.chk_del.isChecked(),
+        }
+
+
+ICONS_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "icons")
+
+
+class ToleranceSlider(QSlider):
+    """QSlider personalizado que responde a la rueda del mouse para cambiar la tolerancia de 1 en 1."""
+
+    def __init__(self, orientation=Qt.Orientation.Horizontal, parent=None) -> None:
+        super().__init__(orientation, parent)
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+
+    def wheelEvent(self, event) -> None:
+        delta = event.angleDelta().y()
+        step = 1
+        if delta > 0:
+            self.setValue(min(self.maximum(), self.value() + step))
+        elif delta < 0:
+            self.setValue(max(self.minimum(), self.value() - step))
+        event.accept()
 
 
 # ============================================================
@@ -130,11 +244,6 @@ class PhotoEditorCanvas(QLabel):
             y1 = self.parent_tab.crop_start_y
             x2 = self.parent_tab.crop_end_x
             y2 = self.parent_tab.crop_end_y
-
-            if self.parent_tab.chk_cuadrado.isChecked():
-                lado = max(abs(x2 - x1), abs(y2 - y1))
-                x2 = x1 + lado if x2 >= x1 else x1 - lado
-                y2 = y1 + lado if y2 >= y1 else y1 - lado
 
             self.parent_tab.coords_recorte_draw = (x1, y1, x2, y2)
 
@@ -192,6 +301,7 @@ class PhotoEditorTab(QWidget):
         self.pan_y = 0
         self.start_x = 0
         self.start_y = 0
+        self.is_panning = False
 
         # Recorte
         self.modo_recorte = False
@@ -215,6 +325,14 @@ class PhotoEditorTab(QWidget):
 
         self.output_dir = ""
 
+        # Configuración de reescalado (800x800)
+        self.resize_mode = "fit"
+        self.resize_fill = "Blanco"
+        self.resize_rembg = True
+        self.resize_jpg = True
+        self.resize_limit = True
+        self.resize_del = False
+
         self._setup_ui()
         self._bind_shortcuts()
 
@@ -228,16 +346,13 @@ class PhotoEditorTab(QWidget):
 
         # --- Panel superior: carga de archivos ---
         top_panel = QHBoxLayout()
-        self.btn_files = QPushButton("📂 Seleccionar Archivos")
-        self.btn_files.clicked.connect(self._load_files)
-        self.btn_folder = QPushButton("📁 Seleccionar Carpeta")
+        self.btn_folder = QPushButton("Seleccionar Carpeta")
         self.btn_folder.clicked.connect(self._load_folder)
-        self.btn_clear = QPushButton("❌ Limpiar Lista")
+        self.btn_clear = QPushButton("Limpiar Lista")
         self.btn_clear.clicked.connect(self._clear_list)
 
         self.lbl_contador = QLabel("Fotos encontradas: 0")
 
-        top_panel.addWidget(self.btn_files)
         top_panel.addWidget(self.btn_folder)
         top_panel.addWidget(self.btn_clear)
         top_panel.addWidget(self.lbl_contador)
@@ -266,57 +381,98 @@ class PhotoEditorTab(QWidget):
         right_layout = QVBoxLayout(right_widget)
         right_layout.setContentsMargins(0, 0, 0, 0)
 
+        # Iconos SVG de la barra de herramientas
+        ic_rot_izq = QIcon(os.path.join(ICONS_DIR, "rotate_left.svg"))
+        ic_rot_der = QIcon(os.path.join(ICONS_DIR, "rotate_right.svg"))
+        ic_zoom_res = QIcon(os.path.join(ICONS_DIR, "zoom_reset.svg"))
+        self.ic_crop = QIcon(os.path.join(ICONS_DIR, "crop.svg"))
+        self.ic_crop_active = QIcon(os.path.join(ICONS_DIR, "crop_active.svg"))
+        self.ic_wand = QIcon(os.path.join(ICONS_DIR, "wand.svg"))
+        self.ic_wand_active = QIcon(os.path.join(ICONS_DIR, "wand_active.svg"))
+
         # Barra de herramientas
         controles_layout = QHBoxLayout()
-        self.btn_rotar_izq = QPushButton("🔄 Rotar Izq")
+        self.btn_rotar_izq = QPushButton()
+        self.btn_rotar_izq.setIcon(ic_rot_izq)
+        self.btn_rotar_izq.setIconSize(QSize(20, 20))
+        self.btn_rotar_izq.setToolTip("Rotar 90° a la Izquierda")
+        self.btn_rotar_izq.setFixedWidth(36)
         self.btn_rotar_izq.clicked.connect(lambda: self._rotar_imagen(-90))
-        self.btn_rotar_der = QPushButton("🔄 Rotar Der")
+
+        self.btn_rotar_der = QPushButton()
+        self.btn_rotar_der.setIcon(ic_rot_der)
+        self.btn_rotar_der.setIconSize(QSize(20, 20))
+        self.btn_rotar_der.setToolTip("Rotar 90° a la Derecha")
+        self.btn_rotar_der.setFixedWidth(36)
         self.btn_rotar_der.clicked.connect(lambda: self._rotar_imagen(90))
-        self.btn_reset_zoom = QPushButton("🔍 Reset Zoom")
+
+        self.btn_reset_zoom = QPushButton()
+        self.btn_reset_zoom.setIcon(ic_zoom_res)
+        self.btn_reset_zoom.setIconSize(QSize(20, 20))
+        self.btn_reset_zoom.setToolTip("Restablecer Zoom")
+        self.btn_reset_zoom.setFixedWidth(36)
         self.btn_reset_zoom.clicked.connect(self._reset_zoom)
 
-        self.btn_recortar = QPushButton("✂️ Modo Recorte")
+        self.btn_recortar = QPushButton()
+        self.btn_recortar.setIcon(self.ic_crop)
+        self.btn_recortar.setIconSize(QSize(20, 20))
+        self.btn_recortar.setToolTip("Modo Recorte")
+        self.btn_recortar.setFixedWidth(36)
         self.btn_recortar.setStyleSheet(
-            f"background-color: {COLOR_WARNING}; color: {COLOR_BG_PRIMARY}; font-weight: bold;"
+            f"background-color: {COLOR_WARNING}; font-weight: bold;"
         )
         self.btn_recortar.clicked.connect(self._toggle_recorte)
-        self.chk_cuadrado = QCheckBox("Forzar Cuadrado (1:1 Web)")
-        self.chk_cuadrado.setChecked(True)
 
-        self.btn_varita = QPushButton("🪄 Varita Mágica")
+        self.btn_varita = QPushButton()
+        self.btn_varita.setIcon(self.ic_wand)
+        self.btn_varita.setIconSize(QSize(20, 20))
+        self.btn_varita.setToolTip("Varita Mágica")
+        self.btn_varita.setFixedWidth(36)
         self.btn_varita.setStyleSheet(
-            f"background-color: {COLOR_BTN_SECONDARY_BG}; color: {COLOR_TEXT_PRIMARY};"
+            f"background-color: {COLOR_BTN_SECONDARY_BG};"
         )
         self.btn_varita.clicked.connect(self._toggle_varita)
 
         self.lbl_tolerance = QLabel("Tolerancia: 30")
-        self.slider_tolerance = QSlider(Qt.Orientation.Horizontal)
+        self.slider_tolerance = ToleranceSlider(Qt.Orientation.Horizontal)
         self.slider_tolerance.setRange(0, 150)
         self.slider_tolerance.setValue(30)
         self.slider_tolerance.setFixedWidth(100)
         self.slider_tolerance.valueChanged.connect(self._on_tolerance_changed)
 
-        self.btn_deshacer = QPushButton("↩️ Deshacer")
+        def _lbl_wheel(event):
+            delta = event.angleDelta().y()
+            step = 1
+            val = self.slider_tolerance.value()
+            if delta > 0:
+                self.slider_tolerance.setValue(min(150, val + step))
+            elif delta < 0:
+                self.slider_tolerance.setValue(max(0, val - step))
+            event.accept()
+
+        self.lbl_tolerance.wheelEvent = _lbl_wheel
+
+        self.btn_deshacer = QPushButton("Deshacer")
         self.btn_deshacer.setStyleSheet(
             f"background-color: {COLOR_BTN_SECONDARY_BG}; color: {COLOR_TEXT_PRIMARY};"
         )
         self.btn_deshacer.clicked.connect(self._undo)
 
-        self.btn_confirmar_crop = QPushButton("✔️ Confirmar")
+        self.btn_confirmar_crop = QPushButton("Confirmar")
         self.btn_confirmar_crop.setStyleSheet(
             f"background-color: {COLOR_SUCCESS}; color: {COLOR_BG_PRIMARY}; font-weight: bold;"
         )
         self.btn_confirmar_crop.hide()
         self.btn_confirmar_crop.clicked.connect(self._confirmar_recorte)
 
-        self.btn_cancelar_crop = QPushButton("❌ Cancelar")
+        self.btn_cancelar_crop = QPushButton("Cancelar")
         self.btn_cancelar_crop.setStyleSheet(
             f"background-color: {COLOR_BTN_DANGER_BG}; color: {COLOR_BTN_DANGER_TEXT}; font-weight: bold;"
         )
         self.btn_cancelar_crop.hide()
         self.btn_cancelar_crop.clicked.connect(self._cancelar_recorte_dibujado)
 
-        self.btn_eliminar = QPushButton("🗑️ Eliminar (Supr)")
+        self.btn_eliminar = QPushButton("Eliminar (Supr)")
         self.btn_eliminar.setStyleSheet(
             f"background-color: {COLOR_BTN_DANGER_BG}; color: {COLOR_BTN_DANGER_TEXT}; font-weight: bold;"
         )
@@ -326,7 +482,6 @@ class PhotoEditorTab(QWidget):
         controles_layout.addWidget(self.btn_rotar_der)
         controles_layout.addWidget(self.btn_reset_zoom)
         controles_layout.addWidget(self.btn_recortar)
-        controles_layout.addWidget(self.chk_cuadrado)
         controles_layout.addWidget(self.btn_varita)
         controles_layout.addWidget(self.lbl_tolerance)
         controles_layout.addWidget(self.slider_tolerance)
@@ -352,45 +507,6 @@ class PhotoEditorTab(QWidget):
 
         main_layout.addWidget(splitter, stretch=1)
 
-        # --- Panel inferior: reescalado ---
-        bottom_config_layout = QHBoxLayout()
-
-        # Grupo de reescalado
-        group_resize = QGroupBox("Configuración de Reescalado 800x800")
-        resize_form = QFormLayout(group_resize)
-
-        mode_layout = QHBoxLayout()
-        self.rb_fit = QRadioButton("Ajustar")
-        self.rb_fit.setChecked(True)
-        self.rb_crop = QRadioButton("Recortar")
-        self.rb_stretch = QRadioButton("Estirar")
-        self.bg_mode = QButtonGroup()
-        self.bg_mode.addButton(self.rb_fit)
-        self.bg_mode.addButton(self.rb_crop)
-        self.bg_mode.addButton(self.rb_stretch)
-        mode_layout.addWidget(self.rb_fit)
-        mode_layout.addWidget(self.rb_crop)
-        mode_layout.addWidget(self.rb_stretch)
-        resize_form.addRow("Método:", mode_layout)
-
-        self.cb_color = QComboBox()
-        self.cb_color.addItems(["Blanco", "Negro", "Gris", "Transparente"])
-        resize_form.addRow("Fondo:", self.cb_color)
-
-        self.chk_jpg = QCheckBox("Forzar .JPG")
-        self.chk_jpg.setChecked(True)
-        self.chk_limit = QCheckBox("Optimizar (<1MB)")
-        self.chk_limit.setChecked(True)
-        self.chk_del = QCheckBox("Eliminar orig.")
-        chk_layout = QHBoxLayout()
-        chk_layout.addWidget(self.chk_jpg)
-        chk_layout.addWidget(self.chk_limit)
-        chk_layout.addWidget(self.chk_del)
-        resize_form.addRow("Opciones:", chk_layout)
-
-        bottom_config_layout.addWidget(group_resize)
-        main_layout.addLayout(bottom_config_layout)
-
         # --- Salida y ejecución por lotes ---
         out_layout = QHBoxLayout()
         out_layout.addWidget(QLabel("Carpeta de Salida:"))
@@ -404,8 +520,13 @@ class PhotoEditorTab(QWidget):
         exec_layout = QHBoxLayout()
         self.progress = QProgressBar()
         exec_layout.addWidget(self.progress, stretch=1)
+
+        self.btn_resize_settings = QPushButton("Configuración de Reescalado")
+        self.btn_resize_settings.clicked.connect(self._abrir_ajustes_reescalado)
+        exec_layout.addWidget(self.btn_resize_settings)
+
         self.btn_process = QPushButton(
-            "⚡ REDIMENSIONAR Y OPTIMIZAR TODO POR LOTES"
+            "REDIMENSIONAR Y OPTIMIZAR TODO POR LOTES"
         )
         self.btn_process.setStyleSheet(
             f"background-color: {COLOR_SUCCESS}; color: {COLOR_BG_PRIMARY}; font-weight: bold;"
@@ -452,16 +573,25 @@ class PhotoEditorTab(QWidget):
             item = self.tree.topLevelItem(nuevo_idx)
             self.tree.setCurrentItem(item)
 
-    def _load_files(self) -> None:
-        """Abre diálogo para seleccionar archivos de imagen individuales."""
-        files, _ = QFileDialog.getOpenFileNames(
+    def _abrir_ajustes_reescalado(self) -> None:
+        """Abre la ventana modal de configuración de reescalado 800x800."""
+        dlg = ResizeSettingsDialog(
             self,
-            "Seleccionar Imágenes",
-            "",
-            "Imágenes (*.jpg *.jpeg *.png *.webp *.bmp *.tiff *.gif)",
+            modo=self.resize_mode,
+            fondo=self.resize_fill,
+            rembg=self.resize_rembg,
+            forzar_jpg=self.resize_jpg,
+            optimizar=self.resize_limit,
+            eliminar_orig=self.resize_del,
         )
-        if files:
-            self._add_images_to_list(files)
+        if dlg.exec():
+            s = dlg.get_settings()
+            self.resize_mode = s["modo"]
+            self.resize_fill = s["fondo"]
+            self.resize_rembg = s["rembg"]
+            self.resize_jpg = s["forzar_jpg"]
+            self.resize_limit = s["optimizar"]
+            self.resize_del = s["eliminar_orig"]
 
     def _load_folder(self) -> None:
         """Abre diálogo para seleccionar una carpeta de imágenes."""
@@ -543,6 +673,8 @@ class PhotoEditorTab(QWidget):
         self.factor_zoom = 1.0
         self.pan_x = 0
         self.pan_y = 0
+        self.is_panning = False
+        self.canvas_imagen.unsetCursor()
         self.historial_ediciones.clear()
         self._desactivar_modo_recorte()
         self._desactivar_modo_varita()
@@ -643,9 +775,10 @@ class PhotoEditorTab(QWidget):
         if not self.modo_recorte:
             self._desactivar_modo_varita()
             self.modo_recorte = True
-            self.btn_recortar.setText("Salir de Recorte")
+            self.btn_recortar.setToolTip("Salir de Recorte (Activo)")
+            self.btn_recortar.setIcon(self.ic_crop_active)
             self.btn_recortar.setStyleSheet(
-                f"background-color: {COLOR_BG_SECONDARY}; color: {COLOR_TEXT_PRIMARY};"
+                f"background-color: {COLOR_BG_SECONDARY};"
             )
             self.canvas_imagen.setCursor(Qt.CursorShape.CrossCursor)
         else:
@@ -654,11 +787,15 @@ class PhotoEditorTab(QWidget):
     def _desactivar_modo_recorte(self) -> None:
         """Desactiva el modo recorte y restaura el cursor."""
         self.modo_recorte = False
-        self.btn_recortar.setText("✂️ Modo Recorte")
+        self.btn_recortar.setToolTip("Modo Recorte")
+        self.btn_recortar.setIcon(self.ic_crop)
         self.btn_recortar.setStyleSheet(
-            f"background-color: {COLOR_WARNING}; color: {COLOR_BG_PRIMARY}; font-weight: bold;"
+            f"background-color: {COLOR_WARNING}; font-weight: bold;"
         )
-        self.canvas_imagen.unsetCursor()
+        if self.factor_zoom > 1.0:
+            self.canvas_imagen.setCursor(Qt.CursorShape.OpenHandCursor)
+        else:
+            self.canvas_imagen.unsetCursor()
         self._cancelar_recorte_dibujado()
 
     def _toggle_varita(self) -> None:
@@ -668,9 +805,10 @@ class PhotoEditorTab(QWidget):
         if not self.modo_varita:
             self._desactivar_modo_recorte()
             self.modo_varita = True
-            self.btn_varita.setText("Salir de Varita")
+            self.btn_varita.setToolTip("Salir de Varita Mágica (Activa)")
+            self.btn_varita.setIcon(self.ic_wand_active)
             self.btn_varita.setStyleSheet(
-                f"background-color: {COLOR_ACCENT}; color: {COLOR_BG_PRIMARY}; font-weight: bold;"
+                f"background-color: {COLOR_ACCENT}; font-weight: bold;"
             )
             self.canvas_imagen.setCursor(Qt.CursorShape.PointingHandCursor)
         else:
@@ -679,11 +817,15 @@ class PhotoEditorTab(QWidget):
     def _desactivar_modo_varita(self) -> None:
         """Desactiva el modo varita mágica y restaura el cursor."""
         self.modo_varita = False
-        self.btn_varita.setText("🪄 Varita Mágica")
+        self.btn_varita.setToolTip("Varita Mágica")
+        self.btn_varita.setIcon(self.ic_wand)
         self.btn_varita.setStyleSheet(
-            f"background-color: {COLOR_BTN_SECONDARY_BG}; color: {COLOR_TEXT_PRIMARY};"
+            f"background-color: {COLOR_BTN_SECONDARY_BG};"
         )
-        self.canvas_imagen.unsetCursor()
+        if self.factor_zoom > 1.0:
+            self.canvas_imagen.setCursor(Qt.CursorShape.OpenHandCursor)
+        else:
+            self.canvas_imagen.unsetCursor()
 
     def _on_tolerance_changed(self, value: int) -> None:
         """Slot: cambia la tolerancia del selector difuso."""
@@ -793,6 +935,12 @@ class PhotoEditorTab(QWidget):
         if self.factor_zoom == 1.0:
             self.pan_x = 0
             self.pan_y = 0
+            self.is_panning = False
+            if not self.modo_recorte and not self.modo_varita:
+                self.canvas_imagen.unsetCursor()
+        else:
+            if not self.modo_recorte and not self.modo_varita:
+                self.canvas_imagen.setCursor(Qt.CursorShape.OpenHandCursor)
         self._cargar_y_mostrar_imagen()
 
     def on_click_izquierdo(self, event) -> None:
@@ -830,9 +978,11 @@ class PhotoEditorTab(QWidget):
                         self, "Error", f"No se pudo aplicar la varita mágica: {e}"
                     )
         else:
-            if self.factor_zoom > 1.0:
+            if self.factor_zoom > 1.0 and event.button() == Qt.MouseButton.LeftButton:
+                self.is_panning = True
                 self.start_x = event.pos().x()
                 self.start_y = event.pos().y()
+                self.canvas_imagen.setCursor(Qt.CursorShape.ClosedHandCursor)
 
     def on_movimiento_izquierdo(self, event) -> None:
         """Maneja el arrastre: actualiza recorte o pan."""
@@ -842,7 +992,7 @@ class PhotoEditorTab(QWidget):
             self.crop_end_x = event.pos().x()
             self.crop_end_y = event.pos().y()
             self.canvas_imagen.update()
-        else:
+        elif self.is_panning and (event.buttons() & Qt.MouseButton.LeftButton):
             if self.factor_zoom > 1.0:
                 dx = event.pos().x() - self.start_x
                 dy = event.pos().y() - self.start_y
@@ -853,7 +1003,7 @@ class PhotoEditorTab(QWidget):
                 self._cargar_y_mostrar_imagen()
 
     def on_soltar_izquierdo(self, event) -> None:
-        """Maneja el soltar botón: finaliza recorte."""
+        """Maneja el soltar botón: finaliza recorte o pan."""
         if self.modo_recorte and self.coords_recorte_draw is not None:
             x1, y1, x2, y2 = self.coords_recorte_draw
             left_canvas = min(x1, x2)
@@ -879,6 +1029,11 @@ class PhotoEditorTab(QWidget):
         self.crop_end_x = None
         self.crop_end_y = None
 
+        if self.is_panning:
+            self.is_panning = False
+            if self.factor_zoom > 1.0 and not self.modo_recorte and not self.modo_varita:
+                self.canvas_imagen.setCursor(Qt.CursorShape.OpenHandCursor)
+
     # ----------------------------------------------------------------
     # Rotación y eliminación
     # ----------------------------------------------------------------
@@ -888,6 +1043,9 @@ class PhotoEditorTab(QWidget):
         self.factor_zoom = 1.0
         self.pan_x = 0
         self.pan_y = 0
+        self.is_panning = False
+        if not self.modo_recorte and not self.modo_varita:
+            self.canvas_imagen.unsetCursor()
         self._cargar_y_mostrar_imagen()
 
     def _rotar_imagen(self, angulo: int) -> None:
@@ -948,9 +1106,25 @@ class PhotoEditorTab(QWidget):
     # ----------------------------------------------------------------
 
     def _process_pil_image(
-        self, img: Image.Image, mode: str, fill_name: str
+        self, img: Image.Image, mode: str, fill_name: str, remove_bg: bool = False, session=None
     ) -> Image.Image:
         """Redimensiona una imagen a 800×800 según el método seleccionado."""
+        if remove_bg:
+            try:
+                from rembg import remove
+                buf = io.BytesIO()
+                img.save(buf, format="PNG")
+                if session is not None:
+                    out_bytes = remove(buf.getvalue(), session=session)
+                else:
+                    out_bytes = remove(buf.getvalue())
+                img = Image.open(io.BytesIO(out_bytes)).convert("RGBA")
+                bbox = img.getbbox()
+                if bbox:
+                    img = img.crop(bbox)
+            except Exception as e:
+                print(f"Error al remover fondo en editor: {e}")
+
         if img.mode not in ("RGB", "RGBA"):
             img = img.convert(
                 "RGBA"
@@ -960,36 +1134,38 @@ class PhotoEditorTab(QWidget):
 
         target_size = (800, 800)
         if mode == "stretch":
-            return img.resize(target_size, Image.Resampling.LANCZOS)
+            res = img.resize(target_size, Image.Resampling.LANCZOS)
         elif mode == "crop":
-            return ImageOps.fit(img, target_size, Image.Resampling.LANCZOS)
+            res = ImageOps.fit(img, target_size, Image.Resampling.LANCZOS)
         else:
             img.thumbnail(target_size, Image.Resampling.LANCZOS)
-            if fill_name == "Transparente" and not self.chk_jpg.isChecked():
-                bg = Image.new("RGBA", target_size, (0, 0, 0, 0))
-            else:
-                color_map = {
-                    "Negro": (0, 0, 0),
-                    "Blanco": (255, 255, 255),
-                    "Gris": (128, 128, 128),
-                }
-                bg_color = color_map.get(fill_name, (255, 255, 255))
-                if img.mode == "RGBA":
-                    bg = Image.new("RGBA", target_size, bg_color + (255,))
-                else:
-                    bg = Image.new("RGB", target_size, bg_color)
+            res = img
 
-            x = (target_size[0] - img.width) // 2
-            y = (target_size[1] - img.height) // 2
-            bg.paste(img, (x, y), img if img.mode == "RGBA" else None)
-            return bg
+        if fill_name == "Transparente" and not self.resize_jpg:
+            bg = Image.new("RGBA", target_size, (0, 0, 0, 0))
+        else:
+            color_map = {
+                "Negro": (0, 0, 0),
+                "Blanco": (255, 255, 255),
+                "Gris": (128, 128, 128),
+            }
+            bg_color = color_map.get(fill_name, (255, 255, 255))
+            if res.mode == "RGBA":
+                bg = Image.new("RGBA", target_size, bg_color + (255,))
+            else:
+                bg = Image.new("RGB", target_size, bg_color)
+
+        x = (target_size[0] - res.width) // 2
+        y = (target_size[1] - res.height) // 2
+        bg.paste(res, (x, y), res if res.mode == "RGBA" else None)
+        return bg
 
     def _process_single_image(
-        self, img_path: str, mode: str, fill_name: str
+        self, img_path: str, mode: str, fill_name: str, remove_bg: bool = False, session=None
     ) -> Image.Image:
         """Abre y procesa una imagen individual."""
         with Image.open(img_path) as img:
-            return self._process_pil_image(img, mode, fill_name)
+            return self._process_pil_image(img, mode, fill_name, remove_bg=remove_bg, session=session)
 
     def _save_with_smart_compression(
         self, res_img: Image.Image, target_path: str, save_format: str
@@ -1002,7 +1178,7 @@ class PhotoEditorTab(QWidget):
 
         res_img.save(buffer, format=save_format, quality=quality)
         if (
-            self.chk_limit.isChecked()
+            self.resize_limit
             and buffer.tell() > 1048576
             and save_format in ("JPEG", "WEBP")
         ):
@@ -1033,21 +1209,31 @@ class PhotoEditorTab(QWidget):
         self.progress.setMaximum(len(self.image_paths))
 
         processed_count, error_count = 0, 0
-        mode = "fit"
-        if self.rb_crop.isChecked():
-            mode = "crop"
-        elif self.rb_stretch.isChecked():
-            mode = "stretch"
-        fill_name = self.cb_color.currentText()
+        mode = self.resize_mode
+        fill_name = self.resize_fill
+        remove_bg = self.resize_rembg
+
+        session = None
+        if remove_bg:
+            try:
+                from rembg import new_session
+                try:
+                    session = new_session("birefnet-general-use")
+                except Exception:
+                    session = new_session("isnet-general-use")
+            except Exception as e:
+                print(f"Error al inicializar rembg: {e}")
 
         from PyQt6.QtWidgets import QApplication
 
         for idx, path in enumerate(self.image_paths):
             try:
-                res_img = self._process_single_image(path, mode, fill_name)
+                res_img = self._process_single_image(
+                    path, mode, fill_name, remove_bg=remove_bg, session=session
+                )
                 name_part, ext = os.path.splitext(os.path.basename(path))
 
-                if self.chk_jpg.isChecked():
+                if self.resize_jpg:
                     target_path = os.path.join(out_dir, f"{name_part}.jpg")
                     save_format = "JPEG"
                 else:
@@ -1068,7 +1254,7 @@ class PhotoEditorTab(QWidget):
                 self._save_with_smart_compression(res_img, target_path, save_format)
                 processed_count += 1
 
-                if self.chk_del.isChecked() and os.path.exists(path):
+                if self.resize_del and os.path.exists(path):
                     if os.path.abspath(path) != os.path.abspath(target_path):
                         os.remove(path)
             except Exception:
@@ -1083,7 +1269,7 @@ class PhotoEditorTab(QWidget):
             f"Procesadas: {processed_count}\nErrores: {error_count}",
         )
 
-        if self.chk_del.isChecked():
+        if self.resize_del:
             # Filtrar rutas existentes
             self.image_paths = [p for p in self.image_paths if os.path.exists(p)]
             # Reconstruir árbol

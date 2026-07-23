@@ -1,9 +1,9 @@
 """
-Pestaña de Procesador IA con remoción de fondo (Rembg).
+Pestaña de Aplicador de Marca de Agua y Sello.
 
-Permite procesar fotos con remoción de fondo por IA, aplicar marca de agua
-(logo central + sello esquina), ajustes digitales (brillo, contraste, nitidez),
-y exportar imágenes optimizadas para web en formato 800×800 JPG.
+Permite aplicar marca de agua (logo central + sello esquina),
+ajustes digitales (brillo, contraste, nitidez), y exportar imágenes
+optimizadas para web en formato 800×800 JPG.
 """
 
 import io
@@ -83,43 +83,19 @@ def pil_to_pixmap(pil_img: Image.Image) -> QPixmap:
 
 
 class SettingsDialog(QDialog):
-    """Diálogo para configurar ajustes de procesamiento IA."""
+    """Diálogo para configurar opacidad de marca de agua y sello."""
 
     def __init__(
         self,
         parent,
-        brillo: float,
-        contraste: float,
-        nitidez: float,
-        calidad: int,
         opacidad_logo: int,
         incluir_sello: bool,
-        sin_fondo: bool,
     ) -> None:
         super().__init__(parent)
-        self.setWindowTitle("Ajustes de Mejoras Digitales")
+        self.setWindowTitle("Ajustes de Marca de Agua y Sello")
         self.setMinimumWidth(320)
 
         layout = QFormLayout(self)
-
-        self.sp_brillo = QDoubleSpinBox()
-        self.sp_brillo.setRange(0.0, 3.0)
-        self.sp_brillo.setSingleStep(0.1)
-        self.sp_brillo.setValue(brillo)
-
-        self.sp_contraste = QDoubleSpinBox()
-        self.sp_contraste.setRange(0.0, 3.0)
-        self.sp_contraste.setSingleStep(0.1)
-        self.sp_contraste.setValue(contraste)
-
-        self.sp_nitidez = QDoubleSpinBox()
-        self.sp_nitidez.setRange(0.0, 3.0)
-        self.sp_nitidez.setSingleStep(0.1)
-        self.sp_nitidez.setValue(nitidez)
-
-        self.sp_calidad = QSpinBox()
-        self.sp_calidad.setRange(10, 100)
-        self.sp_calidad.setValue(calidad)
 
         self.sp_opacidad = QSpinBox()
         self.sp_opacidad.setRange(0, 100)
@@ -128,16 +104,8 @@ class SettingsDialog(QDialog):
         self.chk_sello = QCheckBox()
         self.chk_sello.setChecked(incluir_sello)
 
-        self.chk_sin_fondo = QCheckBox()
-        self.chk_sin_fondo.setChecked(sin_fondo)
-
-        layout.addRow("Nivel de Brillo:", self.sp_brillo)
-        layout.addRow("Nivel de Contraste:", self.sp_contraste)
-        layout.addRow("Nivel de Nitidez:", self.sp_nitidez)
-        layout.addRow("Calidad de Salida (JPEG):", self.sp_calidad)
         layout.addRow("Opacidad Marca de Agua (%):", self.sp_opacidad)
         layout.addRow("Incluir Sello:", self.chk_sello)
-        layout.addRow("Procesar sin fondo (IA):", self.chk_sin_fondo)
 
         btns = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok
@@ -231,7 +199,7 @@ class ProcessorCanvas(QLabel):
 
 
 class PreviewWorker(QThread):
-    """Hilo para generar la vista previa con remoción de fondo."""
+    """Hilo para generar la vista previa de imagen con marcas."""
 
     finished = pyqtSignal(object, object, object)
 
@@ -240,32 +208,17 @@ class PreviewWorker(QThread):
         ruta: str,
         ruta_logo: str,
         ruta_sello: str,
-        solo_marcas: bool,
     ) -> None:
         super().__init__()
         self.ruta = ruta
         self.ruta_logo = ruta_logo
         self.ruta_sello = ruta_sello
-        self.solo_marcas = solo_marcas
 
     def run(self) -> None:
         try:
-            from rembg import remove, new_session
-
-            try:
-                session = new_session("birefnet-general-use")
-            except Exception:
-                session = new_session("isnet-general-use")
-
             img_fondo, img_logo, img_sello = None, None, None
 
-            if self.solo_marcas:
-                img = Image.open(self.ruta).convert("RGBA")
-            else:
-                with open(self.ruta, "rb") as i:
-                    img = Image.open(
-                        io.BytesIO(remove(i.read(), session=session))
-                    ).convert("RGBA")
+            img = Image.open(self.ruta).convert("RGBA")
             bbox = img.getbbox()
             if bbox:
                 img = img.crop(bbox)
@@ -273,11 +226,7 @@ class PreviewWorker(QThread):
             img_fondo = img
 
             if os.path.exists(self.ruta_logo):
-                with open(self.ruta_logo, "rb") as f:
-                    l_img = Image.open(
-                        io.BytesIO(remove(f.read(), session=session))
-                    ).convert("RGBA")
-                img_logo = l_img
+                img_logo = Image.open(self.ruta_logo).convert("RGBA")
             if os.path.exists(self.ruta_sello):
                 img_sello = Image.open(self.ruta_sello).convert("RGBA")
 
@@ -287,7 +236,7 @@ class PreviewWorker(QThread):
 
 
 class BatchWorker(QThread):
-    """Hilo para procesamiento por lotes con remoción de fondo."""
+    """Hilo para procesamiento por lotes de marcas de agua."""
 
     progress = pyqtSignal(int, str)
     finished_batch = pyqtSignal()
@@ -304,32 +253,13 @@ class BatchWorker(QThread):
         os.makedirs(c_out, exist_ok=True)
         os.makedirs(c_arch, exist_ok=True)
 
-        try:
-            from rembg import remove, new_session
-
-            try:
-                session = new_session("birefnet-general-use")
-            except Exception:
-                session = new_session("isnet-general-use")
-        except Exception:
-            session = None
-
         for idx, nom in enumerate(self.lista, 1):
             try:
                 self.progress.emit(
                     idx, f"Procesando ({idx}/{len(self.lista)}): {nom}"
                 )
                 ruta_foto = os.path.join(c_in, nom)
-
-                if self.pt.chk_marcas.isChecked():
-                    img = Image.open(ruta_foto).convert("RGBA")
-                else:
-                    from rembg import remove
-
-                    with open(ruta_foto, "rb") as i:
-                        img = Image.open(
-                            io.BytesIO(remove(i.read(), session=session))
-                        ).convert("RGBA")
+                img = Image.open(ruta_foto).convert("RGBA")
 
                 bbox = img.getbbox()
                 if bbox:
@@ -555,22 +485,15 @@ class PhotoProcessorTab(QWidget):
         left_panel.setContentsMargins(0, 0, 0, 0)
 
         btn_layout = QHBoxLayout()
-        btn_todo = QPushButton("☑️ Todo")
-        btn_todo.clicked.connect(lambda: self._marcar_todos(True))
-        btn_nada = QPushButton("☐ Ninguno")
-        btn_nada.clicked.connect(lambda: self._marcar_todos(False))
-
-        self.btn_ajustes = QPushButton("⚙️ Ajustes de Imagen")
+        self.btn_ajustes = QPushButton("Ajustes de Imagen")
         self.btn_ajustes.clicked.connect(self._abrir_ajustes)
 
-        self.btn_procesar = QPushButton("🚀 INICIAR PROCESAMIENTO WEB")
+        self.btn_procesar = QPushButton("INICIAR PROCESAMIENTO WEB")
         self.btn_procesar.setStyleSheet(
             f"background-color: {COLOR_SUCCESS}; color: {COLOR_BG_PRIMARY}; font-weight: bold;"
         )
         self.btn_procesar.clicked.connect(self._iniciar_hilo_proceso)
 
-        btn_layout.addWidget(btn_todo)
-        btn_layout.addWidget(btn_nada)
         btn_layout.addWidget(self.btn_ajustes)
         btn_layout.addStretch()
         btn_layout.addWidget(self.btn_procesar)
@@ -595,20 +518,6 @@ class PhotoProcessorTab(QWidget):
 
         splitter.setSizes([350, 600])
         main_layout.addWidget(splitter, stretch=1)
-
-        # --- Panel de procesamiento individual ---
-        individual_panel = QHBoxLayout()
-        self.btn_procesar_individual = QPushButton(
-            "⚡ Procesar e Importar Foto Seleccionada"
-        )
-        self.btn_procesar_individual.setStyleSheet(
-            f"background-color: {COLOR_SUCCESS}; color: {COLOR_BG_PRIMARY}; font-weight: bold;"
-        )
-        self.btn_procesar_individual.clicked.connect(
-            self._procesar_y_guardar_individual
-        )
-        individual_panel.addWidget(self.btn_procesar_individual)
-        main_layout.addLayout(individual_panel)
 
         # --- Footer: estado + progreso ---
         footer = QHBoxLayout()
@@ -662,31 +571,16 @@ class PhotoProcessorTab(QWidget):
     # ----------------------------------------------------------------
 
     def _abrir_ajustes(self) -> None:
-        """Abre el diálogo de ajustes de procesamiento."""
+        """Abre el diálogo de ajustes de marca de agua y sello."""
         dlg = SettingsDialog(
             self,
-            self.val_brillo,
-            self.val_contraste,
-            self.val_nitidez,
-            self.val_calidad_jpeg,
             self.slider_opacidad.value(),
             self.chk_sello.isChecked(),
-            not self.chk_marcas.isChecked(),
         )
         if dlg.exec():
-            self.val_brillo = dlg.sp_brillo.value()
-            self.val_contraste = dlg.sp_contraste.value()
-            self.val_nitidez = dlg.sp_nitidez.value()
-            self.val_calidad_jpeg = dlg.sp_calidad.value()
             self.slider_opacidad.setValue(dlg.sp_opacidad.value())
             self.chk_sello.setChecked(dlg.chk_sello.isChecked())
-            nuevo_chk_marcas = not dlg.chk_sin_fondo.isChecked()
-            cambio_fondo = self.chk_marcas.isChecked() != nuevo_chk_marcas
-            self.chk_marcas.setChecked(nuevo_chk_marcas)
-            if cambio_fondo:
-                self._actualizar_vista_previa_actual()
-            else:
-                self._renderizar_canvas()
+            self._renderizar_canvas()
 
     # ----------------------------------------------------------------
     # Lista de imágenes
@@ -724,7 +618,7 @@ class PhotoProcessorTab(QWidget):
             cb.setChecked(True)
             self.chk_variables[f] = cb
             layout.addWidget(cb)
-            btn_preview = QPushButton("👁️")
+            btn_preview = QPushButton("Ver")
             btn_preview.clicked.connect(
                 lambda _, a=f: self._seleccionar_para_preview(a)
             )
@@ -759,7 +653,7 @@ class PhotoProcessorTab(QWidget):
         """Lanza el worker de vista previa para la foto seleccionada."""
         if not self.foto_seleccionada_actual or not self.txt_entrada.text():
             return
-        self.lbl_estado.setText("Generando vista previa (Rembg)...")
+        self.lbl_estado.setText("Generando vista previa...")
         ruta = os.path.join(
             self.txt_entrada.text(), self.foto_seleccionada_actual
         )
@@ -769,7 +663,6 @@ class PhotoProcessorTab(QWidget):
             ruta=ruta,
             ruta_logo=self.txt_logo.text(),
             ruta_sello=self.txt_sello.text(),
-            solo_marcas=self.chk_marcas.isChecked(),
         )
         self.preview_worker.finished.connect(self._on_preview_finished)
         self.preview_worker.start()
@@ -990,119 +883,5 @@ class PhotoProcessorTab(QWidget):
         self.btn_procesar.setEnabled(True)
         self.lbl_estado.setText("Estado: Lote finalizado.")
         QMessageBox.information(
-            self, "Éxito", "¡Proceso IA Completado!"
+            self, "Éxito", "¡Proceso de Marca de Agua y Sello Completado!"
         )
-
-    # ----------------------------------------------------------------
-    # Procesamiento individual
-    # ----------------------------------------------------------------
-
-    def _procesar_y_guardar_individual(self) -> None:
-        """Procesa la foto actual y la guarda."""
-        if not self.foto_seleccionada_actual:
-            return
-        c_in = self.txt_entrada.text()
-        c_out = self.txt_salida.text()
-        c_arch = self.txt_archivo.text()
-        if not c_in or not c_out or not c_arch:
-            return
-
-        nombre_original, _ = os.path.splitext(self.foto_seleccionada_actual)
-        nuevo_nombre_base = nombre_original
-
-        os.makedirs(c_out, exist_ok=True)
-        os.makedirs(c_arch, exist_ok=True)
-
-        self.lbl_estado.setText("Procesando y guardando individualmente...")
-        QApplication.processEvents()
-
-        try:
-            if self.img_fondo_limpia is None:
-                QMessageBox.warning(
-                    self,
-                    "Espera",
-                    "La vista previa de IA se está cargando. Por favor, espera a que termine.",
-                )
-                return
-
-            img = self.img_fondo_limpia.copy()
-            img = self.aplicar_filtros_imagen(img)
-
-            lienzo = Image.new("RGB", (800, 800), (255, 255, 255))
-            lienzo.paste(
-                img,
-                ((800 - img.width) // 2, (800 - img.height) // 2),
-                mask=img,
-            )
-
-            if self.img_logo_limpia:
-                l_res = self.img_logo_limpia.resize(
-                    (
-                        int(self.logo_props["w"]),
-                        int(self.logo_props["h"]),
-                    ),
-                    Image.Resampling.LANCZOS,
-                )
-                l_op = l_res.copy()
-                factor_alfa = self.slider_opacidad.value() / 100.0
-                l_op.putalpha(
-                    l_res.getchannel("A").point(
-                        lambda p: int(p * factor_alfa)
-                    )
-                )
-                lienzo.paste(
-                    l_op,
-                    (
-                        int(self.logo_props["x"] - l_res.width // 2),
-                        int(self.logo_props["y"] - l_res.height // 2),
-                    ),
-                    mask=l_op,
-                )
-
-            if self.chk_sello.isChecked() and self.img_sello_limpia:
-                s_res = self.img_sello_limpia.resize(
-                    (
-                        int(self.sello_props["w"]),
-                        int(self.sello_props["h"]),
-                    ),
-                    Image.Resampling.LANCZOS,
-                )
-                lienzo.paste(
-                    s_res,
-                    (
-                        int(self.sello_props["x"] - s_res.width // 2),
-                        int(self.sello_props["y"] - s_res.height // 2),
-                    ),
-                    mask=s_res,
-                )
-
-            out_path = os.path.join(c_out, f"{nuevo_nombre_base}.jpg")
-            lienzo.save(
-                out_path,
-                "JPEG",
-                quality=self.val_calidad_jpeg,
-                optimize=True,
-            )
-
-            ruta_foto = os.path.join(c_in, self.foto_seleccionada_actual)
-            shutil.move(ruta_foto, os.path.join(c_arch, self.foto_seleccionada_actual))
-
-            self.lbl_estado.setText(
-                f"Guardado y respaldado: {nuevo_nombre_base}.jpg"
-            )
-
-            self._cargar_lista_imagenes()
-            self.foto_seleccionada_actual = None
-            self.img_fondo_limpia = None
-            self.img_tk_editor = None
-            self.canvas_editor.clear()
-
-            # Seleccionar primer ítem disponible
-            files = list(self.chk_variables.keys())
-            if files:
-                self._seleccionar_para_preview(files[0])
-
-        except Exception as e:
-            QMessageBox.critical(
-                self, "Error", f"No se pudo guardar la imagen: {e}"
-            )

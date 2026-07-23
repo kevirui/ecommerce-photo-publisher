@@ -204,7 +204,7 @@ class SettingsDialog(QDialog):
         # Botón de prueba
         btn_layout = QHBoxLayout()
         btn_layout.addStretch()
-        self._btn_test_sql = QPushButton("🔌  Probar conexión SQL")
+        self._btn_test_sql = QPushButton("Probar conexión SQL")
         self._btn_test_sql.clicked.connect(self._test_sql_connection)
         btn_layout.addWidget(self._btn_test_sql)
         layout.addLayout(btn_layout)
@@ -256,7 +256,7 @@ class SettingsDialog(QDialog):
         # Botón de prueba
         btn_layout = QHBoxLayout()
         btn_layout.addStretch()
-        self._btn_test_ftp = QPushButton("🔌  Probar conexión FTP")
+        self._btn_test_ftp = QPushButton("Probar conexión FTP")
         self._btn_test_ftp.clicked.connect(self._test_ftp_connection)
         btn_layout.addWidget(self._btn_test_ftp)
         layout.addLayout(btn_layout)

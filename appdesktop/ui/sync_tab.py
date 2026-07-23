@@ -211,24 +211,24 @@ class SyncTab(QWidget):
         vbox_actions.setSpacing(10)
         vbox_actions.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-        self._btn_analyze_excel = QPushButton("📊  Analizar Excel")
+        self._btn_analyze_excel = QPushButton("Analizar Excel")
         self._btn_analyze_excel.setProperty("primary", True)
         self._btn_analyze_excel.clicked.connect(self._on_analyze_excel)
         vbox_actions.addWidget(self._btn_analyze_excel)
 
-        self._btn_consult_sql = QPushButton("🖥  Consultar SQL")
+        self._btn_consult_sql = QPushButton("Consultar SQL")
         self._btn_consult_sql.clicked.connect(self._on_consult_sql)
         vbox_actions.addWidget(self._btn_consult_sql)
 
-        self._btn_export_excel = QPushButton("📤  Exportar Excel")
+        self._btn_export_excel = QPushButton("Exportar Excel")
         self._btn_export_excel.clicked.connect(self._on_export_excel)
         vbox_actions.addWidget(self._btn_export_excel)
 
-        self._btn_update = QPushButton("🔄  Actualizar")
+        self._btn_update = QPushButton("Actualizar")
         self._btn_update.clicked.connect(self._on_update)
         vbox_actions.addWidget(self._btn_update)
 
-        self._btn_cancel = QPushButton("⛔  Cancelar")
+        self._btn_cancel = QPushButton("Cancelar")
         self._btn_cancel.setProperty("danger", True)
         self._btn_cancel.setEnabled(False)
         self._btn_cancel.clicked.connect(self._on_cancel)

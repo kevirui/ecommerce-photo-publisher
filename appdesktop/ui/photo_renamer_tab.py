@@ -74,7 +74,6 @@ class PhotoRenamerTab(QWidget):
         self.image_paths: list[str] = []
         self.indice_actual = -1
         self.img_pil_actual: Image.Image | None = None
-        self.contador_secuencial = 1
 
         self._setup_ui()
         self._bind_shortcuts()
@@ -85,23 +84,17 @@ class PhotoRenamerTab(QWidget):
 
         # --- Panel superior: carga de archivos ---
         top_panel = QHBoxLayout()
-        self.btn_files = QPushButton("📂 Seleccionar Archivos")
-        self.btn_files.clicked.connect(self._load_files)
-        self.btn_folder = QPushButton("📁 Seleccionar Carpeta")
+        self.btn_folder = QPushButton("Seleccionar Carpeta")
         self.btn_folder.clicked.connect(self._load_folder)
-        self.btn_clear = QPushButton("❌ Limpiar Lista")
+        self.btn_clear = QPushButton("Limpiar Lista")
         self.btn_clear.clicked.connect(self._clear_list)
 
         self.lbl_contador = QLabel("Fotos encontradas: 0")
 
-        top_panel.addWidget(self.btn_files)
         top_panel.addWidget(self.btn_folder)
         top_panel.addWidget(self.btn_clear)
         top_panel.addWidget(self.lbl_contador)
         top_panel.addStretch()
-
-        self.chk_secuencial = QCheckBox("Modo Secuencial (Auto -1, -2...)")
-        top_panel.addWidget(self.chk_secuencial)
         main_layout.addLayout(top_panel)
 
         # --- Splitter: árbol de archivos + renombrador/vista previa ---
@@ -128,7 +121,7 @@ class PhotoRenamerTab(QWidget):
 
         # Barra de herramientas para eliminación
         controles_layout = QHBoxLayout()
-        self.btn_eliminar = QPushButton("🗑️ Eliminar Foto (Supr)")
+        self.btn_eliminar = QPushButton("Eliminar Foto (Supr)")
         self.btn_eliminar.setStyleSheet(
             f"background-color: {COLOR_BTN_DANGER_BG}; color: {COLOR_BTN_DANGER_TEXT}; font-weight: bold;"
         )
@@ -199,17 +192,6 @@ class PhotoRenamerTab(QWidget):
         if 0 <= nuevo_idx < len(self.image_paths):
             item = self.tree.topLevelItem(nuevo_idx)
             self.tree.setCurrentItem(item)
-
-    def _load_files(self) -> None:
-        """Abre diálogo para seleccionar archivos de imagen individuales."""
-        files, _ = QFileDialog.getOpenFileNames(
-            self,
-            "Seleccionar Imágenes para Renombrar",
-            "",
-            "Imágenes (*.jpg *.jpeg *.png *.webp *.bmp *.tiff *.gif)",
-        )
-        if files:
-            self._add_images_to_list(files)
 
     def _load_folder(self) -> None:
         """Abre diálogo para seleccionar una carpeta de imágenes."""
@@ -373,12 +355,7 @@ class PhotoRenamerTab(QWidget):
             return
         _, ext = os.path.splitext(nombre_original)
 
-        if self.chk_secuencial.isChecked():
-            nuevo_nombre_completo = (
-                f"{nuevo_nombre_base}-{self.contador_secuencial}{ext}"
-            )
-        else:
-            nuevo_nombre_completo = nuevo_nombre_base + ext
+        nuevo_nombre_completo = nuevo_nombre_base + ext
 
         ruta_nueva = os.path.join(dir_original, nuevo_nombre_completo)
 
@@ -402,16 +379,12 @@ class PhotoRenamerTab(QWidget):
             self.image_paths[self.indice_actual] = ruta_nueva
             if self.tree.currentItem():
                 self.tree.currentItem().setText(0, nuevo_nombre_completo)
-            
-            if self.chk_secuencial.isChecked():
-                self.contador_secuencial += 1
 
             proximo_indice = self.indice_actual + 1
             if proximo_indice < len(self.image_paths):
                 item = self.tree.topLevelItem(proximo_indice)
                 self.tree.setCurrentItem(item)
             else:
-                self.contador_secuencial = 1
                 QMessageBox.information(
                     self, "¡Terminado!", "Fin de la lista de renombrado."
                 )

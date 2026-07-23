@@ -85,25 +85,25 @@ class FreeShippingTab(QWidget):
         layout_actions = QHBoxLayout(group_actions)
         layout_actions.setSpacing(12)
 
-        self._btn_load = QPushButton("🖥  Cargar Productos")
+        self._btn_load = QPushButton("Cargar Productos")
         self._btn_load.setToolTip("Carga los productos desde la base de datos que tienen imagen principal.")
         self._btn_load.clicked.connect(self._on_load_clicked)
         layout_actions.addWidget(self._btn_load)
 
-        self._btn_apply = QPushButton("🚚  Aplicar Envío Gratis")
+        self._btn_apply = QPushButton("Aplicar Envío Gratis")
         self._btn_apply.setProperty("primary", True)
         self._btn_apply.setToolTip("Descarga, estampa el sello de Envío Gratis y sube las imágenes principales de los seleccionados.")
         self._btn_apply.clicked.connect(self._on_apply_clicked)
         self._btn_apply.setEnabled(False)
         layout_actions.addWidget(self._btn_apply)
 
-        self._btn_remove = QPushButton("↩  Quitar Envío Gratis")
+        self._btn_remove = QPushButton("Quitar Envío Gratis")
         self._btn_remove.setToolTip("Quita el sello de Envío Gratis y restaura la imagen original para los seleccionados.")
         self._btn_remove.clicked.connect(self._on_remove_clicked)
         self._btn_remove.setEnabled(False)
         layout_actions.addWidget(self._btn_remove)
 
-        self._btn_cancel = QPushButton("⛔  Cancelar")
+        self._btn_cancel = QPushButton("Cancelar")
         self._btn_cancel.setProperty("danger", True)
         self._btn_cancel.setEnabled(False)
         self._btn_cancel.clicked.connect(self._on_cancel_clicked)
@@ -325,11 +325,11 @@ class FreeShippingTab(QWidget):
         self._btn_cancel.setEnabled(is_running)
 
         if checked_count > 0:
-            self._btn_apply.setText(f"🚚  Aplicar Envío Gratis ({checked_count})")
-            self._btn_remove.setText(f"↩  Quitar Envío Gratis ({checked_count})")
+            self._btn_apply.setText(f"Aplicar Envío Gratis ({checked_count})")
+            self._btn_remove.setText(f"Quitar Envío Gratis ({checked_count})")
         else:
-            self._btn_apply.setText("🚚  Aplicar Envío Gratis")
-            self._btn_remove.setText("↩  Quitar Envío Gratis")
+            self._btn_apply.setText("Aplicar Envío Gratis")
+            self._btn_remove.setText("Quitar Envío Gratis")
 
     def _on_apply_clicked(self) -> None:
         """Inicia el proceso de estampar las imágenes de los artículos seleccionados."""

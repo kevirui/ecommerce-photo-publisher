@@ -103,17 +103,17 @@ class AuditTab(QWidget):
         layout_actions = QHBoxLayout(group_actions)
         layout_actions.setSpacing(12)
 
-        self._btn_audit_sql = QPushButton("🖥  Auditar SQL")
+        self._btn_audit_sql = QPushButton("Auditar SQL")
         self._btn_audit_sql.setToolTip("Analizar artículos en SQL Server sin verificar archivos en FTP.")
         self._btn_audit_sql.clicked.connect(lambda: self._start_audit("sql"))
         layout_actions.addWidget(self._btn_audit_sql)
 
-        self._btn_audit_ftp = QPushButton("📁  Auditar FTP")
+        self._btn_audit_ftp = QPushButton("Auditar FTP")
         self._btn_audit_ftp.setToolTip("Descargar listado FTP y buscar archivos huérfanos sin datos de publicación.")
         self._btn_audit_ftp.clicked.connect(lambda: self._start_audit("ftp"))
         layout_actions.addWidget(self._btn_audit_ftp)
 
-        self._btn_audit_all = QPushButton("🔍  Auditar Todo")
+        self._btn_audit_all = QPushButton("Auditar Todo")
         self._btn_audit_all.setProperty("primary", True)
         self._btn_audit_all.setToolTip("Analizar consistencia completa (SQL + FTP + Huérfanos + Advertencias).")
         self._btn_audit_all.clicked.connect(lambda: self._start_audit("all"))
@@ -121,12 +121,12 @@ class AuditTab(QWidget):
 
         layout_actions.addSpacing(20)
 
-        self._btn_export = QPushButton("📤  Exportar Resultado")
+        self._btn_export = QPushButton("Exportar Resultado")
         self._btn_export.setToolTip("Exportar listado actual a Auditoria.xlsx.")
         self._btn_export.clicked.connect(self._on_export_excel)
         layout_actions.addWidget(self._btn_export)
 
-        self._btn_cancel = QPushButton("⛔  Cancelar")
+        self._btn_cancel = QPushButton("Cancelar")
         self._btn_cancel.setProperty("danger", True)
         self._btn_cancel.setEnabled(False)
         self._btn_cancel.clicked.connect(self._on_cancel)

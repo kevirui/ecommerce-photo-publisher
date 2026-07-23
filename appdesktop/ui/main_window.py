@@ -213,19 +213,19 @@ class MainWindow(QMainWindow):
 
         # --- TAB 4: Editor de Fotos ---
         self._photo_editor_tab = PhotoEditorTab()
-        self._tab_widget.addTab(self._photo_editor_tab, "📸 Editor de Fotos")
+        self._tab_widget.addTab(self._photo_editor_tab, "Editor de Fotos")
 
         # --- TAB 5: Renombrador de Fotos ---
         self._photo_renamer_tab = PhotoRenamerTab()
-        self._tab_widget.addTab(self._photo_renamer_tab, "✏️ Renombrador de Fotos")
+        self._tab_widget.addTab(self._photo_renamer_tab, "Renombrador de Fotos")
 
-        # --- TAB 6: Procesador IA ---
+        # --- TAB 6: Marca de Agua y Sello ---
         self._photo_processor_tab = PhotoProcessorTab()
-        self._tab_widget.addTab(self._photo_processor_tab, "🤖 Procesador IA")
+        self._tab_widget.addTab(self._photo_processor_tab, "Marca de Agua y Sello")
 
         # --- TAB 7: Envío Gratis ---
         self._free_shipping_tab = FreeShippingTab(self._sql_service, self._ftp_service, parent=self)
-        self._tab_widget.addTab(self._free_shipping_tab, "🚚 Envío Gratis")
+        self._tab_widget.addTab(self._free_shipping_tab, "Envío Gratis")
 
         main_layout.addWidget(self._tab_widget, 1)
 
@@ -401,24 +401,24 @@ class MainWindow(QMainWindow):
         layout.setContentsMargins(0, 4, 0, 4)
         layout.setSpacing(10)
 
-        self._btn_connect = QPushButton("🔌  Conectar")
+        self._btn_connect = QPushButton("Conectar")
         self._btn_connect.setProperty("primary", True)
         self._btn_connect.setToolTip("Conectar a SQL Server y FTP")
         self._btn_connect.clicked.connect(self._on_connect)
         layout.addWidget(self._btn_connect)
 
-        self._btn_scan = QPushButton("🔍  Escanear")
+        self._btn_scan = QPushButton("Escanear")
         self._btn_scan.setToolTip("Escanear carpeta de imágenes")
         self._btn_scan.clicked.connect(self._on_scan)
         layout.addWidget(self._btn_scan)
 
-        self._btn_publish = QPushButton("🚀  Publicar")
+        self._btn_publish = QPushButton("Publicar")
         self._btn_publish.setProperty("primary", True)
         self._btn_publish.setToolTip("Iniciar publicación de artículos")
         self._btn_publish.clicked.connect(self._on_publish)
         layout.addWidget(self._btn_publish)
 
-        self._btn_cancel = QPushButton("⛔  Cancelar")
+        self._btn_cancel = QPushButton("Cancelar")
         self._btn_cancel.setProperty("danger", True)
         self._btn_cancel.setToolTip("Cancelar publicación en curso")
         self._btn_cancel.clicked.connect(self._on_cancel)
@@ -803,9 +803,9 @@ class MainWindow(QMainWindow):
         # Generar reporte
         try:
             report_path = self._report_service.generate_report(self._articles)
-            self._log(f"📊 Reporte generado: {report_path}")
+            self._log(f"Reporte generado: {report_path}")
         except Exception as e:
-            self._log(f"⚠ Error al generar reporte: {e}")
+            self._log(f"Error al generar reporte: {e}")
 
         # Mensaje final
         total = successful + failed
@@ -827,9 +827,9 @@ class MainWindow(QMainWindow):
         # Generar reporte parcial
         try:
             report_path = self._report_service.generate_report(self._articles)
-            self._log(f"📊 Reporte parcial generado: {report_path}")
+            self._log(f"Reporte parcial generado: {report_path}")
         except Exception as e:
-            self._log(f"⚠ Error al generar reporte: {e}")
+            self._log(f"Error al generar reporte: {e}")
 
     def _on_ftp_conflict(self, code: str, remote_name: str) -> None:
         """Slot: conflicto FTP detectado, mostrar diálogo al usuario."""
